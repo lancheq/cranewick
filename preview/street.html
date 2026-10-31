@@ -1,0 +1,138 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>CRANEWICK · 单体 ③ 英伦街道</title>
+<style>
+  html,body{margin:0;height:100%;background:#10141a}
+  canvas{display:block}
+  #boot{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;
+    color:#D9B26A;font:13px/1.6 "SF Mono",Menlo,monospace;letter-spacing:.1em;z-index:99;
+    background:#10141a;transition:opacity .4s}#boot.gone{opacity:0;pointer-events:none}
+  #err{position:fixed;inset:0;display:none;padding:40px;color:#E2913C;
+    font:12px/1.7 "SF Mono",Menlo,monospace;white-space:pre-wrap;overflow:auto;z-index:100}
+  #panel{position:fixed;left:14px;bottom:74px;width:300px;background:rgba(18,22,29,.9);
+    border:1px solid rgba(217,178,106,.28);border-radius:8px;padding:10px 12px;z-index:6;
+    font:11.5px/1.5 "SF Mono",Menlo,Consolas,"PingFang SC",monospace;color:#E8E4DC}
+  #panel h3{margin:0 0 6px;font-size:10.5px;letter-spacing:.12em;text-transform:uppercase;
+    color:#D9B26A;font-weight:600}#panel h3:not(:first-child){margin-top:9px}
+  #panel .btns{display:flex;gap:6px;margin-top:5px;flex-wrap:wrap}
+  #panel button{flex:1 1 auto;min-width:62px;padding:4px 6px;font:inherit;font-size:10.5px;cursor:pointer;
+    background:rgba(217,178,106,.07);color:#E8E4DC;border:1px solid rgba(217,178,106,.28);border-radius:5px}
+  #panel button:hover{background:rgba(217,178,106,.18)}
+  #panel button.on{background:#D9B26A;color:#14181e;border-color:#D9B26A;font-weight:600}
+  #panel .r{display:flex;align-items:center;gap:8px;margin:3px 0}
+  #panel input[type=range]{flex:1;accent-color:#D9B26A}
+</style>
+<script type="importmap">
+{"imports":{"three":"../vendor/three.module.js","three/addons/":"../vendor/jsm/"}}
+</script>
+</head>
+<body>
+<div id="boot">正在装配街道 …</div>
+<pre id="err"></pre>
+
+<script type="module">
+import * as THREE from 'three';
+import { createViewer } from '../src/core/viewer.js?v=20260916171526';
+import * as Street from '../src/assets/street.js?v=20260916171526';
+
+const showErr = (m) => { const el = document.getElementById('err'); el.style.display='block'; el.textContent += m + '\n\n'; };
+window.addEventListener('error', (e) => showErr(`${e.message}\n  ${e.filename}:${e.lineno}`));
+window.addEventListener('unhandledrejection', (e) => showErr('Promise: ' + (e.reason?.stack || e.reason)));
+
+const SP = Street.SPEC;
+let street;
+
+const VIEWS = {
+  街面视角: { pos: [-16, 2.0, 3.4], tgt: [-30, 3.2, -1.6] },
+  斜俯视: { pos: [-20, 14, 16], tgt: [0, 3, 0] },
+  排水近景: { pos: [-3, 1.6, 7.4], tgt: [-9, 0.2, 3.0] },
+  窗户近景: { pos: [-6.5, 4.6, 10.5], tgt: [-6.5, 5.2, 5.5] },
+  道具近景: { pos: [-17.5, 2.4, 8.2], tgt: [-19.5, 1.2, 6.0] },
+  天际线: { pos: [-34, 18, -24], tgt: [0, 8, 0] },
+};
+
+const viewer = createViewer({
+  title: '③ 英伦街道',
+  subtitle: '铺装分层 / 排水系统 / 五类道具 / 联排砖楼与烟囱天际线',
+  specs: [
+    ['路段长', '64 m'],
+    ['车行道', '6.6 m（双车道 3.3×2 · **石板路**）'],
+    ['人行道', '2.2 m ×2 · 路缘 0.14'],
+    ['街道总宽', '11.0 m'],
+    ['收水线', '|z| = 2.95 · 铸铁格栅间距 16 m'],
+    ['蒸汽街灯', '高 3.6 m · 间距 14 m'],
+    ['联排楼', '2–4 层 · 层高 3.2 · 四种砖墙贴图轮换'],
+    ['窗户', '暗玻璃 + **亮黄铜窗棂** + 暖窗内光 + 亮窗台'],
+    ['道具', '报亭 ×1 · 消防栓 ×2 · 邮筒 ×1 · 店招 / 遮阳篷'],
+  ],
+  checklist: [
+    '街道是否"窄"：总宽 11.0 m、双车道 + 两侧人行道',
+    '车行区是否为石板路（不是小方石）',
+    '**窗户能不能看见**：暗玻璃 vs 亮黄铜窗棂 vs 墙 是否三者有对比',
+    '墙面是否多色砖贴图交杂（纯色块不合格）',
+    '岗亭是否只有 1 个（报亭）',
+    '排水三件套：收水线 + 铸铁格栅 + 阴沟口石',
+    '整体明度：黄铜是否有高光带；墙面是否不再过饱和',
+  ],
+  options: { pedestal: false, human: false, outline: false, shadows: true, stageOpts: { sunElevation: 30, sunAzimuth: 150 } },
+  camera: { pos: [-26, 3.1, 7.6], target: [2, 3.2, -1.0], fov: 46, shadowCamera: 70, shadowMapSize: 4096 },
+
+  build(ctx) {
+    const { stage } = ctx;
+    stage.scene.fog.density = 0.0062;      // 街道尺度近，雾要重一点才有纵深
+    street = Street.build({ outline: true });
+    street.userData.parts.setNight(true);
+    return street;
+  },
+
+  animation: {
+    duration: 20,
+    labels: ['煤气灯稳定', '偶发闪烁', '恢复'],
+    tick(t, { asset }) {
+      asset.userData.parts.flicker(t, true);
+    },
+  },
+});
+window.__viewer = viewer;
+
+// 相机预设按钮
+(function presets() {
+  const el = document.createElement('div');
+  el.id = 'panel';
+  el.innerHTML = `
+    <h3>视角</h3>
+    <div class="btns" id="vs">${Object.keys(VIEWS).map((n, i) => `<button data-v="${n}"${i === 0 ? '' : ''}>${n}</button>`).join('')}</div>
+    <h3>夜景</h3>
+    <div class="btns" id="night">
+      <button data-n="1" class="on">亮灯</button>
+      <button data-n="0">熄灯</button>
+    </div>
+    <div class="r"><span style="font-size:10.5px;color:#9AA3AD;width:52px">雾</span>
+      <input type="range" id="fog" min="0" max="0.014" step="0.0004" value="0.0062"></div>`;
+  document.body.appendChild(el);
+
+  el.querySelectorAll('#vs button').forEach((b) => {
+    b.onclick = () => {
+      const v = VIEWS[b.dataset.v];
+      viewer.stage.camera.position.fromArray(v.pos);
+      viewer.stage.controls.target.fromArray(v.tgt);
+      viewer.stage.controls.update();
+    };
+  });
+  el.querySelector('#night').onclick = (e) => {
+    const on = e.target.dataset.n === '1';
+    if (!on && e.target.dataset.n === undefined) return;
+    street.userData.parts.setNight(on);
+    el.querySelectorAll('#night button').forEach((x) => x.classList.toggle('on', x === e.target));
+  };
+  el.querySelector('#fog').oninput = (e) => { viewer.stage.scene.fog.density = parseFloat(e.target.value); };
+})();
+
+document.getElementById('boot').classList.add('gone');
+setTimeout(() => document.getElementById('boot')?.remove(), 600);
+</script>
+</body>
+</html>

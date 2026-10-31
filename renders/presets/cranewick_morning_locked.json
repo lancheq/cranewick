@@ -1,0 +1,186 @@
+{
+  "locked_at": "2026-10-25 12:20:11",
+  "mode": "morning",
+  "render": {
+    "engine": "CYCLES",
+    "samples": 96,
+    "resolution": [
+      1920,
+      1080
+    ],
+    "view_transform": "AgX",
+    "look": "AgX - Medium High Contrast",
+    "exposure": -0.3499999940395355
+  },
+  "preset": {
+    "sky": "physical",
+    "sky_strength": 0.55,
+    "sky_sun_elev": 18.0,
+    "sky_sun_rot": 105.0,
+    "sky_dust": 0.7,
+    "sky_sun_disc": true,
+    "sun": [
+      5.0,
+      "#ffd0a0",
+      2.0,
+      [
+        18.0,
+        22.0,
+        -42.0
+      ]
+    ],
+    "skyfill": [
+      14.0,
+      "#a9c8e2"
+    ],
+    "horizon": [
+      12.0,
+      "#ffcf9c"
+    ],
+    "rim": [
+      30.0,
+      "#cfe2ff"
+    ],
+    "shipfill": [
+      75.0,
+      "#a9c8e2"
+    ],
+    "shiptop": [
+      45.0,
+      "#ffe3bd"
+    ],
+    "shipbounce": [
+      14.0,
+      "#ffb27a"
+    ],
+    "lamps": 0.0,
+    "shop": 0.0,
+    "indoor": 0.0,
+    "shiplights": 0.0,
+    "bridge": 0.0,
+    "search": 0.0,
+    "sheen": 0.0,
+    "search_col": "#cfe2ff",
+    "water_emit": 0.0,
+    "water_emit_day": 0.0,
+    "waterbounce": [
+      0.0,
+      "#ffb070"
+    ],
+    "exposure": -0.35,
+    "xform": "AgX",
+    "look": "AgX - Medium High Contrast",
+    "glare": [
+      1.4,
+      0.55,
+      0.35
+    ],
+    "vignette": 0.22,
+    "fog_col": "#b3c6d6",
+    "fog_mul": 0.22,
+    "stops": [
+      [
+        0.0,
+        "#8fa6b8"
+      ],
+      [
+        0.12,
+        "#9db8ca"
+      ],
+      [
+        0.35,
+        "#8fb2cc"
+      ],
+      [
+        0.65,
+        "#719dc2"
+      ],
+      [
+        1.0,
+        "#5a86ae"
+      ]
+    ],
+    "cyc_em": 0.42,
+    "cyc_zmin": -45.0,
+    "cyc_zmax": 55.0,
+    "lift": [
+      0.985,
+      1.0,
+      1.028,
+      1.0
+    ],
+    "gain": [
+      1.09,
+      1.0,
+      0.918,
+      1.0
+    ],
+    "gamma": [
+      1.02,
+      1.0,
+      0.99,
+      1.0
+    ],
+    "contrast": 12.0,
+    "sat": 1.08,
+    "vol": [
+      "#d8c6ad",
+      0.008
+    ],
+    "em_window": 0.1,
+    "em_lamp": 0.06,
+    "em_sign": 0.65,
+    "em_interior": 0.1,
+    "glass_emit": 0.01,
+    "glass_emit_dark": 0.018,
+    "glass_graze": [
+      0.52,
+      0.62
+    ],
+    "glass_rough": [
+      0.045,
+      0.07
+    ],
+    "pendant": 0.0,
+    "porthole": 1.2,
+    "beam": 0.0,
+    "marker": 0.2,
+    "marker_W": 0.0,
+    "nav_em": 1.2,
+    "nav_W": 0.0,
+    "nav_halo": 0.0,
+    "win_ramp": [
+      [
+        0.0,
+        1.0
+      ],
+      [
+        1.0,
+        1.0
+      ]
+    ],
+    "water_gloss": [
+      0.1,
+      0.24,
+      0.2,
+      1.55
+    ],
+    "glow_warm": 0.62,
+    "glow_cool": 0.4,
+    "glow_sheen": 0.0,
+    "rain_emit": 0.12,
+    "halo": 0.0
+  },
+  "lights_W": {
+    "sun": 5.0,
+    "skyfill": 14.0,
+    "horizon": 12.0,
+    "rim": 30.0,
+    "lamps": 0.0,
+    "shop_spill": 0.0,
+    "shop_indoor": 0.0,
+    "bridge": 0.0,
+    "search": 0.0,
+    "water_sheen": 0.0
+  }
+}

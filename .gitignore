@@ -1,0 +1,39 @@
+# 内部工作流 / 协作文档（不发布）
+AGENTS.md
+agent.md
+HANDOFF.md
+INDEX.md
+PROMPT_*.md
+docs/CHANGELOG.md
+docs/PLAN.md
+docs/LOCAL_WORKSPACE.md
+
+# 备份 / 临时工作区 / 编辑器
+.backup/
+_scratch/
+.workbuddy/
+.DS_Store
+
+# 渲染与成片：只保留光照预设与贴图输入
+renders/*
+!renders/presets/
+!renders/textures/
+film/
+refs/
+
+# Blender 工具：只保留管线本体，排除一次性探针脚本
+tools/blender/*
+!tools/blender/GLTFExporter.js
+!tools/blender/build_cranewick.py
+!tools/blender/export.mjs
+!tools/blender/export_server.py
+!tools/blender/package.json
+!tools/blender/package-lock.json
+
+# 本地生成物
+build-info.json
+**/__pycache__/
+tools/blender/node_modules/
+
+# 依赖上级工作区的本地文件
+preview/index.html

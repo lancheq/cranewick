@@ -1,0 +1,2064 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>CRANEWICK · 运镜录制台</title>
+<style>
+  :root { color-scheme: dark; }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; background: #060708; overflow: hidden;
+    font: 12px/1.5 -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif;
+    color: #d8d2c4; -webkit-user-select: none; user-select: none; }
+  #stage { position: fixed; inset: 0; width: 100%; height: 100%; border: 0; background: #000; }
+
+  #hud { position: fixed; inset: 0; pointer-events: none; z-index: 10; }
+  #hud > * { pointer-events: auto; }
+  .panel { background: rgba(12,14,17,.84); border: 1px solid rgba(210,164,90,.28);
+    border-radius: 10px; backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
+    box-shadow: 0 4px 24px rgba(0,0,0,.45); }
+
+  /* 顶部标题 + 模式 */
+  #brand { position: fixed; top: 10px; left: 12px; padding: 6px 12px; pointer-events: none; }
+  #brand b { color: #d2a45a; font-size: 13px; letter-spacing: .5px; }
+  #verTag { color: #77808a; font-size: 10px; margin-left: 6px; }
+  #modeTag { margin-left: 10px; color: #9aa3ad; }
+  #modeTag.rec { color: #ff6b61; font-weight: 600; }
+
+  /* 启动失败提示 */
+  #bootErr { position: fixed; left: 50%; top: 46%; transform: translate(-50%, -50%);
+    width: min(430px, calc(100vw - 40px)); padding: 16px 20px; display: none;
+    font-size: 12.5px; line-height: 1.8; }
+  #bootErr b { color: #ffcf9e; display: block; margin-bottom: 4px; }
+  #bootErr .k { color: #d2a45a; }
+  #bootErr .btn { margin-top: 10px; }
+
+  /* REC 徽标 */
+  #recBadge { position: fixed; top: 10px; left: 50%; transform: translateX(-50%);
+    padding: 6px 16px; border-radius: 999px; display: none; align-items: center; gap: 8px;
+    background: rgba(60,12,14,.88); border: 1px solid rgba(255,90,80,.55); color: #ffd9d5;
+    font-variant-numeric: tabular-nums; font-size: 13px; }
+  #recBadge .dot { width: 9px; height: 9px; border-radius: 50%; background: #ff4d42;
+    animation: blink 1s steps(2) infinite; }
+  @keyframes blink { 50% { opacity: .15; } }
+
+  /* 覆盖确认条 */
+  #confirmBox { position: fixed; top: 52px; left: 50%; transform: translateX(-50%);
+    padding: 8px 16px; display: none; color: #ffd9a0; font-size: 12.5px; }
+
+  /* 分段面板 */
+  #segPanel { position: fixed; top: 52px; left: 12px; width: 236px; padding: 8px;
+    max-height: 46vh; display: flex; flex-direction: column; }
+  #segPanel .ph { display: flex; justify-content: space-between; align-items: center;
+    padding: 2px 4px 8px; color: #d2a45a; font-weight: 600; letter-spacing: .5px; }
+  #segList { overflow-y: auto; min-height: 30px; }
+  .seg { display: flex; align-items: center; gap: 4px; padding: 5px 6px; border-radius: 7px;
+    cursor: pointer; border: 1px solid transparent; margin-bottom: 2px; }
+  .seg:hover { background: rgba(255,255,255,.05); }
+  .seg.on { background: rgba(210,164,90,.13); border-color: rgba(210,164,90,.45); }
+  .seg .nm { flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .seg .meta { color: #8b939c; font-size: 11px; font-variant-numeric: tabular-nums; }
+  .seg .nm input { width: 100%; background: #1a1e24; color: #eee; border: 1px solid #444;
+    border-radius: 4px; font: inherit; padding: 1px 4px; }
+  .seg button, .btn { background: #232830; color: #cfd6dd; border: 1px solid #3a414b;
+    border-radius: 6px; font: inherit; font-size: 11px; padding: 2px 8px; cursor: pointer; }
+  .seg button:hover, .btn:hover { background: #2e353f; border-color: #525b66; }
+  .btn:disabled, .seg button:disabled { opacity: .38; cursor: default; }
+  .btn.warn { color: #ff8d84; border-color: #6b3a37; }
+  .btn.warn:hover { background: #3a2220; }
+  .btn.gold { color: #0d0f12; background: #d2a45a; border-color: #d2a45a; font-weight: 600; }
+  .btn.gold:hover { background: #e0b56e; }
+  #segTip { padding: 8px 4px 2px; color: #77808a; font-size: 11px; line-height: 1.7; }
+
+  /* 右侧滑块面板 */
+  #ctlPanel { position: fixed; top: 10px; right: 12px; width: 266px; padding: 10px 12px 12px;
+    max-height: calc(100vh - var(--th, 100px) - 34px); overflow-y: auto; }
+  .ctl { margin-bottom: 9px; }
+  .ctl .lb { display: flex; justify-content: space-between; color: #aeb6bf; margin-bottom: 3px; }
+  .ctl .lb b { color: #e8e2d2; font-weight: 600; }
+  .ctl .val { color: #d2a45a; font-variant-numeric: tabular-nums; }
+  input[type=range] { width: 100%; accent-color: #d2a45a; height: 18px; margin: 0; cursor: pointer; }
+  input[type=range]:disabled { opacity: .35; cursor: default; }
+  .stops { display: flex; justify-content: space-between; color: #77808a; font-size: 10.5px;
+    margin-top: -2px; padding: 0 2px; }
+  .stops span.on { color: #d2a45a; font-weight: 600; }
+  .hr { border-top: 1px solid rgba(210,164,90,.2); margin: 10px 0; }
+  #wtRow { display: flex; align-items: center; gap: 6px; }
+  #wtRow input { flex: 1; }
+  #wtRun { width: 26px; text-align: center; padding: 2px 0; }
+
+  /* 环境变化轨道 */
+  #envHead { display: flex; justify-content: space-between; align-items: center;
+    color: #d2a45a; font-weight: 600; margin-bottom: 4px; }
+  #envHead .btn { font-size: 10.5px; padding: 1px 7px; }
+  #envBaseRow { display: flex; align-items: center; gap: 4px; margin-bottom: 3px; }
+  #envBase { flex: 1; color: #77808a; font-size: 11px; }
+  #editBase { font-size: 10.5px; padding: 1px 7px; }
+  #envAll { font-size: 10.5px; padding: 1px 7px; }
+  #envAll.warn { color: #ff8d84; border-color: #6b3a37; }
+  #baseEditor { display: none; margin: 2px 0 5px; }
+  #baseEditor.locked { pointer-events: none; opacity: .55; }
+  .evSub { color: #aeb6bf; font-size: 10.5px; margin: 3px 0 1px; }
+  #envHint { color: #6f7882; font-size: 10.5px; line-height: 1.55; margin: 2px 0 5px; }
+  #envList { max-height: 112px; overflow-y: auto; }
+  #envEmpty { color: #77808a; font-size: 11px; line-height: 1.6; padding: 3px 2px 5px; }
+  .evRow { display: flex; align-items: center; gap: 6px; padding: 3px 6px; border-radius: 6px;
+    cursor: pointer; border: 1px solid transparent; font-size: 11px;
+    font-variant-numeric: tabular-nums; }
+  .evRow:hover { background: rgba(255,255,255,.05); }
+  .evRow.on { background: rgba(255,90,80,.12); border-color: rgba(255,120,110,.5); }
+  .evRow .evTime { color: #cfd6dd; white-space: nowrap; }
+  .evRow .evTo { color: #8fb8e8; white-space: nowrap; }
+  .evRow.on .evTo { color: #ffdca8; }
+  .evRow .evDot { width: 6px; height: 6px; border-radius: 50%; background: #78b4ff; flex: none; }
+  .evRow.on .evDot { background: #ff6b61; }
+  #envEditor { display: none; border-top: 1px dashed rgba(210,164,90,.25); margin-top: 6px;
+    padding-top: 7px; }
+  #envEditor.locked { pointer-events: none; opacity: .55; }
+  #evFromRow { display: flex; align-items: center; gap: 4px; margin-bottom: 5px; }
+  #evFrom { flex: 1; color: #8fb8e8; font-size: 11px; }
+  #evMerge { display: none; font-size: 10px; padding: 1px 5px; color: #ffcf9e;
+    border-color: #6b4a2a; }
+  #evFromEdit { font-size: 10px; padding: 1px 6px; }
+  #evFromEditor { display: none; margin-bottom: 5px; }
+  .evLine { display: flex; align-items: center; gap: 6px; margin-bottom: 3px; }
+  .evLine .evLab { color: #aeb6bf; width: 28px; flex: none; }
+  .evLine input[type=range] { flex: 1; width: auto; min-width: 0; }
+  .evLine input[type=number] { width: 58px; flex: none; background: #171b21; color: #e8e2d2;
+    border: 1px solid #343c46; border-radius: 4px; font: inherit; font-size: 11px; padding: 1px 3px;
+    font-variant-numeric: tabular-nums; }
+  .chips { display: flex; gap: 4px; margin: 3px 0 5px; }
+  .chip { flex: 1; background: #1d232b; border: 1px solid #343c46; color: #aeb6bf;
+    border-radius: 5px; font: inherit; font-size: 11px; padding: 2px 0; cursor: pointer; }
+  .chip:hover { background: #2a3139; }
+  .chip.on { background: #d2a45a; color: #0d0f12; border-color: #d2a45a; font-weight: 600; }
+  .evBtns { display: flex; gap: 5px; margin-top: 6px; }
+  .evBtns .btn { flex: 1; padding: 2px 2px; }
+
+  /* 底部走带 */
+  #transport { position: fixed; bottom: 8px; left: 8px; right: 8px; padding: 8px 12px 9px;
+    border-radius: 12px; display: flex; flex-direction: column; gap: 5px; }
+  #trTop { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+  #recBtn { font-size: 12.5px; padding: 4px 13px; white-space: nowrap; }
+  #recBtn.armed { background: #4a2c1a; border-color: #a05a2c; color: #ffcf9e; }
+  #recBtn.rec { background: #571e1b; border-color: #ff5a50; color: #ffe1de; }
+  #playBtn { width: 38px; text-align: center; padding: 4px 0; }
+  #freeBtn { width: 34px; text-align: center; padding: 4px 0; }
+  #tlLabel { color: #d2a45a; font-variant-numeric: tabular-nums; white-space: nowrap;
+    width: 152px; text-align: center; font-size: 12.5px; }
+  #trTop .grow { flex: 1; }
+  #chainLbl { display: flex; align-items: center; gap: 4px; color: #8b939c; white-space: nowrap; }
+  #timeline { position: relative; height: 80px; }
+  #tlBar { position: absolute; top: 24px; left: 0; right: 0; height: 32px; border-radius: 8px;
+    background: #12161b; border: 1px solid #2d343e; cursor: crosshair; overflow: visible;
+    outline: none; touch-action: none; }
+  #tlBar:focus-visible { border-color: rgba(210,164,90,.7); }
+  #tlBar.empty { cursor: default; opacity: .55; }
+  #tlFill { position: absolute; top: 0; bottom: 0; left: 0; width: 0; border-radius: 8px 0 0 8px;
+    background: linear-gradient(90deg, rgba(210,164,90,.08), rgba(210,164,90,.20));
+    pointer-events: none; overflow: hidden; }
+  #tlEvLayer { position: absolute; inset: 0; pointer-events: none; }
+  .evBar { position: absolute; top: 3px; height: 10px; border-radius: 4px;
+    background: rgba(110,170,240,.42); border: 1px solid rgba(140,200,255,.62);
+    pointer-events: auto; cursor: pointer; min-width: 3px; touch-action: none; }
+  .evBar.on { background: rgba(255,90,80,.30); border-color: #ff6b61;
+    box-shadow: 0 0 8px rgba(255,80,70,.4); z-index: 2; }
+  .evBar .evHd { position: absolute; top: -4px; width: 10px; height: 40px; border-radius: 3px;
+    background: #ff5148; border: 2px solid #ffb3ad; box-shadow: 0 0 8px rgba(255,60,50,.55);
+    display: none; touch-action: none; cursor: ew-resize; }
+  .evBar .evHd.h0 { left: -6px; }
+  .evBar .evHd.h1 { right: -6px; }
+  .evBar .evHd .tag { position: absolute; top: -17px; left: 50%; transform: translateX(-50%);
+    color: #ff9a92; font-size: 10px; line-height: 1; font-style: normal; font-weight: 700;
+    letter-spacing: .3px; white-space: nowrap; pointer-events: none;
+    text-shadow: 0 1px 3px #000, 0 0 2px #000; }
+  .evBar.on .evHd { display: block; }
+  #tlHead { position: absolute; top: -5px; bottom: -5px; left: 0; width: 2px; margin-left: -1px;
+    background: #ffe0a3; box-shadow: 0 0 6px rgba(255,213,140,.8); pointer-events: none;
+    display: none; z-index: 3; }
+  #tlTicks { position: absolute; left: 0; right: 0; top: 63px; height: 15px; pointer-events: none;
+    color: #77808a; font-size: 10px; }
+  #tlTicks .tick { position: absolute; white-space: nowrap; transform: translateX(-50%); }
+  #tlTicks .tick.edge { transform: none; }
+  #tlTicks .tick::before { content: ''; position: absolute; left: 50%; top: -4px;
+    width: 1px; height: 4px; background: #48515c; }
+
+  /* 帮助 */
+  #help { position: fixed; bottom: calc(var(--th, 100px) + 20px); left: 12px; width: 250px;
+    padding: 7px 10px; color: #77808a; font-size: 11px; line-height: 1.7; }
+  #help b { color: #aeb6bf; font-weight: 600; }
+  #help .k { color: #d2a45a; }
+  #help .row { margin-top: 2px; }
+  @media (max-width: 900px) { #help { display: none; } }
+
+  /* 准星 & 提示 */
+  #cross { position: fixed; left: 50%; top: 50%; width: 5px; height: 5px; margin: -2.5px;
+    border-radius: 50%; background: #fff; mix-blend-mode: difference; display: none; }
+  #lockHint { position: fixed; left: 50%; top: 58%; transform: translateX(-50%);
+    padding: 8px 18px; display: none; color: #d8d2c4; font-size: 13px; }
+  #toast { position: fixed; bottom: calc(var(--th, 100px) + 28px); left: 50%; transform: translateX(-50%);
+    padding: 7px 16px; color: #e8e2d2; opacity: 0; transition: opacity .25s; pointer-events: none; }
+  #toast.show { opacity: 1; }
+  #ffBadge { position: fixed; top: 52px; left: 50%; transform: translateX(-50%);
+    padding: 6px 14px; display: none; color: #ffd9a0; }
+</style>
+</head>
+<body>
+<iframe id="stage" src="../canal_airship.html?v=2" allowfullscreen></iframe>
+
+<div id="hud">
+  <div id="brand" class="panel"><b>CRANEWICK · 运镜录制台</b><span id="verTag">v2.2</span><span id="modeTag">加载中…</span></div>
+  <div id="bootErr" class="panel">
+    <b>场景没有加载完成</b>
+    <div id="bootErrMsg">请确认地址是 <span class="k">http://localhost:8817/studio/</span>（不是直接双击文件），然后重新加载。</div>
+    <button class="btn gold" id="bootReload">重新加载</button>
+  </div>
+  <div id="recBadge" class="panel"><span class="dot"></span><span id="recKind">REC</span> <b id="recTime">00:00.00</b></div>
+  <div id="confirmBox" class="panel"></div>
+  <div id="ffBadge" class="panel">定位中…</div>
+
+  <div id="segPanel" class="panel">
+    <div class="ph"><span>分段运镜</span><button class="btn gold" id="addSeg">＋ 下一段</button></div>
+    <div id="segList"></div>
+    <div id="segTip">点行选中 · 双击改名<br>空格＝开始 / 结束记录本段<br>已有记录时按空格＝确认重录</div>
+  </div>
+
+  <div id="ctlPanel" class="panel">
+    <div class="ctl"><div class="lb"><b>运动速度</b><span class="val" id="vSpeed">6.0 m/s</span></div>
+      <input type="range" id="rSpeed" min="0.5" max="20" step="0.5" value="6"></div>
+    <div class="ctl"><div class="lb"><b>鼠标灵敏度</b><span class="val" id="vSens">1.00</span></div>
+      <input type="range" id="rSens" min="0.3" max="2.5" step="0.05" value="1"></div>
+    <div class="ctl"><div class="lb"><b>视场角 FOV</b><span class="val" id="vFov">38°</span></div>
+      <input type="range" id="rFov" min="24" max="90" step="1" value="38"></div>
+    <div class="hr"></div>
+    <div class="ctl"><div class="lb"><b>天气</b><span class="val" id="vRain">晴</span></div>
+      <input type="range" id="rRain" min="0" max="1" step="1" value="0">
+      <div class="stops"><span id="sRain0" class="on">晴</span><span id="sRain1">雨</span></div></div>
+    <div class="ctl"><div class="lb"><b>时段</b><span class="val" id="vTod">暮</span></div>
+      <input type="range" id="rTod" min="0" max="3" step="1" value="2">
+      <div class="stops"><span id="sTod0">晨</span><span id="sTod1">午</span><span id="sTod2" class="on">暮</span><span id="sTod3">夜</span></div></div>
+    <div class="ctl"><div class="lb"><b>叙事时刻</b><span class="val" id="vWt">0.00s</span></div>
+      <div id="wtRow"><input type="range" id="rWt" min="0" max="59.99" step="0.01" value="0">
+        <button class="btn" id="wtRun" title="世界时间 播放/暂停">▶</button></div>
+      <div class="stops"><span id="vPhase">常态</span></div></div>
+    <div class="hr"></div>
+    <div id="envPanel">
+      <div id="envHead"><b>天气 / 时段渐变</b><button class="btn gold" id="addEnv" title="添加一段天气/时段渐变（不影响运镜时长）">＋ 渐变</button></div>
+      <div id="envBaseRow"><span id="envBase">起点：—</span><button class="btn" id="editBase" title="编辑本段起点环境">改</button><button class="btn" id="envAll" title="把本段固定为一个环境（会清空所有渐变，需点两次确认）">整段</button></div>
+      <div id="baseEditor">
+        <div class="evSub">起点时段</div>
+        <div class="chips" id="baseTods">
+          <button class="chip" data-tod="0">晨</button><button class="chip" data-tod="1">午</button><button class="chip" data-tod="2">暮</button><button class="chip" data-tod="3">夜</button>
+        </div>
+        <div class="evSub">起点天气</div>
+        <div class="chips" id="baseRains">
+          <button class="chip" data-rain="0">晴</button><button class="chip" data-rain="1">雨</button>
+        </div>
+      </div>
+      <div id="envHint">红色 start / finish 只调整天气/时段渐变的起止，不裁剪片段、不改运镜时长。渐变默认沿上一个渐变的目标接续；点「改」可单独指定起点，段首极短切换会自动并入起点。暂停/回放时调天气会写入当前渐变，自由飞行时只改实时画面。</div>
+      <div id="envList"></div>
+      <div id="envEditor">
+        <div id="evFromRow">
+          <span id="evFrom">渐变起点：—</span>
+          <button class="btn" id="evMerge" title="把首个渐变的终点并入段起点（去掉开场那段过渡）">并入起点</button>
+          <button class="btn" id="evFromEdit">改</button>
+        </div>
+        <div id="evFromEditor">
+          <div class="evSub">起点时段</div>
+          <div class="chips" id="evFromTods">
+            <button class="chip" data-from-auto="1">自动</button>
+            <button class="chip" data-tod="0">晨</button><button class="chip" data-tod="1">午</button><button class="chip" data-tod="2">暮</button><button class="chip" data-tod="3">夜</button>
+          </div>
+          <div class="evSub">起点天气</div>
+          <div class="chips" id="evFromRains">
+            <button class="chip" data-rain="0">晴</button><button class="chip" data-rain="1">雨</button>
+          </div>
+        </div>
+        <div class="evLine"><span class="evLab">开始</span>
+          <input type="range" id="rEvT0" min="0" max="1" step="0.01" value="0">
+          <input type="number" id="nEvT0" min="0" step="0.01" value="0"></div>
+        <div class="evLine"><span class="evLab">结束</span>
+          <input type="range" id="rEvT1" min="0" max="1" step="0.01" value="0">
+          <input type="number" id="nEvT1" min="0" step="0.01" value="0"></div>
+        <div class="ctl" style="margin:5px 0 2px"><div class="lb"><b>目标时段</b></div>
+          <div class="chips" id="evTods">
+            <button class="chip" data-tod="0">晨</button><button class="chip" data-tod="1">午</button><button class="chip" data-tod="2">暮</button><button class="chip" data-tod="3">夜</button>
+          </div></div>
+        <div class="ctl" style="margin:0 0 2px"><div class="lb"><b>目标天气</b></div>
+          <div class="chips" id="evRains">
+            <button class="chip" data-rain="0">晴</button><button class="chip" data-rain="1">雨</button>
+          </div></div>
+        <div class="evBtns">
+          <button class="btn" id="evSetStart">开始＝播放头</button>
+          <button class="btn" id="evSetEnd">结束＝播放头</button>
+          <button class="btn warn" id="evDel">删除</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div id="transport" class="panel">
+    <div id="trTop">
+      <button class="btn" id="recBtn">⏺ 开始记录 <span class="k">Space</span></button>
+      <button class="btn" id="playBtn" title="P">▶</button>
+      <button class="btn" id="freeBtn" title="返回自由飞行">✈</button>
+      <span id="tlLabel">00:00.00 / 00:00.00</span>
+      <span class="grow"></span>
+      <label id="chainLbl"><input type="checkbox" id="chainAll">连播</label>
+      <button class="btn" id="expVid">导出视频</button>
+      <button class="btn" id="expJson">导出JSON</button>
+      <button class="btn" id="impJson">导入JSON</button>
+      <button class="btn" id="fsBtn">全屏</button>
+    </div>
+    <div id="timeline">
+      <div id="tlBar" tabindex="0" title="拖动定位 · ←/→ 微调（Shift 更细）">
+        <div id="tlFill"></div>
+        <div id="tlEvLayer"></div>
+        <div id="tlHead"></div>
+      </div>
+      <div id="tlTicks"></div>
+    </div>
+  </div>
+
+  <div id="help" class="panel">
+    <b>操作</b>　<span class="k">点击画面</span>=锁定鼠标　<span class="k">鼠标</span>=视角<br>
+    <span class="k">W A S D</span>=平移　<span class="k">Ctrl / C</span>=降 / 升（Q E 备用）<br>
+    <span class="k">Shift</span>=冲刺　<span class="k">Space</span>=记录　<span class="k">P</span>=播放　<span class="k">F</span>=全屏
+    <div class="row"><span class="k">时间轴</span> 拖动定位 · ←/→ 微调（Shift ×0.1）<br><span class="k">红色 start / finish</span> 只调天气/时段渐变，不裁剪片段</div>
+  </div>
+
+  <div id="cross"></div>
+  <div id="lockHint" class="panel">点击画面锁定鼠标，进入飞行视角</div>
+  <div id="toast" class="panel"></div>
+</div>
+
+<input type="file" id="fileImp" accept=".json,application/json" style="display:none">
+
+<script>
+'use strict';
+/* ======================================================================
+ * CRANEWICK 运镜录制台
+ * 原文件 canal_airship.html 一行不动：本页把原场景挂进 iframe（同源），
+ * 注入驱动接管渲染循环，在父页面记录/回放相机与环境。
+ * 环境事件模型：段内每次天气/时段变化 = { t0 开始渐变, t1 渐变完成, 目标 }，
+ * 两端都可在时间轴/数值框里精调，回放按录制的帧间隔重驱世界。
+ * ==================================================================== */
+
+/* ---------------- 驱动（注入 iframe，裸标识符访问页面顶层 let/const） ------ */
+const DRIVER = String.raw`
+(function(){
+  var W = window, D = document, C = W.CRANEWICK;
+  if (W.__cw) return;
+  var st = D.createElement('style');
+  st.textContent = '#bar,#load,#err{display:none!important}html,body{overflow:hidden}';
+  D.head.appendChild(st);
+  // 拦掉页面自己的 orbit 拖拽 / 滚轮 / 右键（capture 在 document 层先于 canvas 命中）
+  var killed = ['pointerdown','pointermove','pointerup','pointercancel','wheel','contextmenu','mousedown','dblclick','touchstart'];
+  function swallow(e){ e.stopImmediatePropagation(); }
+  for (var i = 0; i < killed.length; i++) D.addEventListener(killed[i], swallow, true);
+  // 停掉页面主循环：本帧跑完后不再续排
+  W.requestAnimationFrame = function(){ return 0; };
+
+  var input = { keys:{}, mdx:0, mdy:0, locked:false };
+  var PASS = { Space:1,KeyP:1,KeyF:1,Escape:1,KeyW:1,KeyA:1,KeyS:1,KeyD:1,KeyC:1,KeyQ:1,KeyE:1,
+               ControlLeft:1,ControlRight:1,ShiftLeft:1,ShiftRight:1 };
+  function key(e, down){
+    if (!PASS[e.code]) return;
+    if (down && (e.code === 'Space' || e.code.indexOf('Arrow') === 0)) e.preventDefault();
+    input.keys[e.code] = down;
+    try { W.parent.__studio.onKey(e.code, down, e.repeat); } catch(_){}
+  }
+  D.addEventListener('keydown', function(e){ key(e, true); }, true);
+  D.addEventListener('keyup',   function(e){ key(e, false); }, true);
+  W.addEventListener('blur', function(){ input.keys = {}; });
+
+  var cv = C.renderer.domElement;
+  D.addEventListener('click', function(){ api.requestLock(); }, true);
+  D.addEventListener('pointerlockchange', function(){
+    input.locked = (D.pointerLockElement === cv);
+    try { W.parent.__studio.onLockChange(input.locked); } catch(_){}
+  });
+  D.addEventListener('mousemove', function(e){
+    if (input.locked) { input.mdx += (e.movementX || 0); input.mdy += (e.movementY || 0); }
+  }, true);
+
+  var EUL = null, TMPC = new THREE.Color();
+  function snapFrom(target){
+    var o = { colors:{}, nums:{}, sunPos:[target.sunPos.x, target.sunPos.y, target.sunPos.z] }, i, k;
+    for (i = 0; i < STAGE_COLORS.length; i++){ k = STAGE_COLORS[i]; o.colors[k] = '#' + target[k].getHexString(); }
+    for (i = 0; i < STAGE_NUMS.length; i++){ k = STAGE_NUMS[i]; o.nums[k] = target[k]; }
+    return o;
+  }
+  function copySnap(o){
+    if (!o) return;
+    var s = C.stageCur, k;
+    for (k in o.colors) s[k].set(o.colors[k]);
+    for (k in o.nums) s[k] = o.nums[k];
+    s.sunPos.set(o.sunPos[0], o.sunPos[1], o.sunPos[2]);
+  }
+  function blendSnap(a, b, u){
+    var s = C.stageCur, k, n;
+    if (a && b) {
+      for (k in a.colors) s[k].set(a.colors[k]).lerp(TMPC.set(b.colors[k]), u);
+      for (k in a.nums) s[k] = a.nums[k] + (b.nums[k] - a.nums[k]) * u;
+      s.sunPos.set(
+        a.sunPos[0] + (b.sunPos[0] - a.sunPos[0]) * u,
+        a.sunPos[1] + (b.sunPos[1] - a.sunPos[1]) * u,
+        a.sunPos[2] + (b.sunPos[2] - a.sunPos[2]) * u);
+    } else if (a) copySnap(a);
+    else if (b) copySnap(b);
+  }
+
+  var api = {
+    input: input,
+    canvas: cv,
+    requestLock: function(){ if (!input.locked) { try { var p = cv.requestPointerLock(); if (p && p.catch) p.catch(function(){}); } catch(_){} } },
+    exitLock: function(){ if (input.locked) D.exitPointerLock(); },
+    getWorldTime: function(){ var t = elapsed % CYCLE; return t < 0 ? t + CYCLE : t; },
+    getWallTime: function(){ return wallTime; },
+    setWallTime: function(v){ wallTime = v; },
+    setPose: function(x, y, z, yaw, pitch, fov){
+      var cam = C.camera;
+      if (cam.fov !== fov) { cam.fov = fov; cam.updateProjectionMatrix(); }
+      cam.position.set(x, y, z);
+      if (!EUL) EUL = new THREE.Euler(0, 0, 0, 'YXZ');
+      EUL.set(pitch, yaw, 0, 'YXZ');
+      cam.quaternion.setFromEuler(EUL);
+    },
+    stepWorld: function(dt, tWorld, env){
+      wallTime += dt;
+      elapsed = tWorld; lastT = tWorld;
+      if (env) {
+        if (env.tod) { C.stage.tod = env.tod; C.stage.rain = !!env.rain; }
+        updateStage(dt);
+        if (env.b && env.u < 0.999) blendSnap(env.a, env.b, env.u);
+        else if (env.b) copySnap(env.b);
+        else if (env.a) copySnap(env.a);
+        updateStage(0);
+      } else {
+        updateStage(dt);
+      }
+      updateWorld(tWorld, dt);
+      updateRain(dt, tWorld);
+    },
+    applyEnv: function(env, tWorld){
+      if (!env) return;
+      if (env.tod) { C.stage.tod = env.tod; C.stage.rain = !!env.rain; }
+      if (env.b && env.u < 0.999) blendSnap(env.a, env.b, env.u);
+      else if (env.b) copySnap(env.b);
+      else if (env.a) copySnap(env.a);
+      updateStage(0);
+      updateRain(0, typeof tWorld === 'number' ? tWorld : 0);
+    },
+    seekWorld: function(t){ seekTime(t); elapsed = t; lastT = t; },
+    resetTransient: function(){ resetTransientState(); },
+    setStage: function(tod, rain){ C.stage.tod = tod; C.stage.rain = !!rain; },
+    getStage: function(){ return { tod: C.stage.tod, rain: !!C.stage.rain }; },
+    snapStage: function(){
+      var s = C.stageCur, o = snapFrom(s);
+      o.winMidnight = +winMidnight.toFixed(4); o.puddleWet = +puddleWet.toFixed(4);
+      return o;
+    },
+    stageSnapOf: function(tod, rain){
+      var t = STAGE_TARGETS[tod];
+      if (!t) return null;
+      return snapFrom(t[rain ? 'rain' : 'sun']);
+    },
+    restoreStage: function(o){
+      var s = C.stageCur, k;
+      for (k in o.colors) s[k].set(o.colors[k]);
+      for (k in o.nums) s[k] = o.nums[k];
+      s.sunPos.set(o.sunPos[0], o.sunPos[1], o.sunPos[2]);
+      if (o.winMidnight !== undefined) winMidnight = o.winMidnight;
+      if (o.puddleWet !== undefined) puddleWet = o.puddleWet;
+      updateStage(0);
+    },
+    setViewport: function(w, h){
+      C.renderer.setPixelRatio(1);
+      C.renderer.setSize(w, h, false);
+      C.camera.aspect = w / h;
+      C.camera.updateProjectionMatrix();
+    },
+    restoreQuality: function(){ if (typeof applyQuality === 'function') applyQuality(); },
+    lockKeys: function(){
+      if (W.navigator.keyboard && W.navigator.keyboard.lock) {
+        try { W.navigator.keyboard.lock(['KeyW','KeyA','KeyS','KeyD','KeyC','KeyQ','KeyE','Space','ControlLeft','ControlRight','KeyP','KeyF','Escape']); } catch(_){}
+      }
+    },
+    unlockKeys: function(){
+      if (W.navigator.keyboard && W.navigator.keyboard.unlock) { try { W.navigator.keyboard.unlock(); } catch(_){} }
+    },
+    spawn: function(){
+      var cam = C.camera, d = new THREE.Vector3();
+      cam.getWorldDirection(d);
+      return { x: cam.position.x, y: cam.position.y, z: cam.position.z,
+               yaw: Math.atan2(-d.x, -d.z),
+               pitch: Math.asin(Math.max(-1, Math.min(1, d.y))),
+               fov: cam.fov };
+    },
+    render: function(){ C.renderer.render(C.scene, C.camera); }
+  };
+  W.__cw = api;
+})();
+`;
+
+/* ---------------- 常量 ---------------- */
+const TODS    = ['morning', 'noon', 'dusk', 'midnight'];
+const TOD_CN  = ['晨', '午', '暮', '夜'];
+const PHASES  = [
+  { name: '常态', from: 0 }, { name: '封道升桥', from: 5 }, { name: '进场', from: 20 },
+  { name: '触水', from: 28 }, { name: '形态转换', from: 31 }, { name: '穿桥', from: 35 },
+  { name: '停航', from: 48 }];
+const CYCLE = 60;
+const KEY = 'cranewick.studio.v1';
+const MIN_SAMPLE_DT = 1 / 60;      // 采样上限 60Hz（ProMotion 屏不至于翻倍体积）
+const MOUSE_K = 0.0022;
+const ENV_TRANS = 1.2;             // 新环境变化的默认过渡时长（秒）
+
+/* sample 布局: [t, dt, x, y, z, yaw, pitch, fov, todIdx, rain] */
+const T = 0, DT = 1, PX = 2, PY = 3, PZ = 4, YW = 5, PT_ = 6, FV = 7, TD = 8, RN = 9;
+
+/* ---------------- 状态 ---------------- */
+const $ = id => document.getElementById(id);
+const els = {
+  frame: $('stage'), modeTag: $('modeTag'), recBadge: $('recBadge'), recKind: $('recKind'),
+  recTime: $('recTime'), confirmBox: $('confirmBox'), ffBadge: $('ffBadge'),
+  segList: $('segList'), addSeg: $('addSeg'),
+  rSpeed: $('rSpeed'), vSpeed: $('vSpeed'), rSens: $('rSens'), vSens: $('vSens'),
+  rFov: $('rFov'), vFov: $('vFov'), rRain: $('rRain'), vRain: $('vRain'),
+  sRain0: $('sRain0'), sRain1: $('sRain1'), rTod: $('rTod'), vTod: $('vTod'),
+  sTod: [$('sTod0'), $('sTod1'), $('sTod2'), $('sTod3')], vPhase: $('vPhase'),
+  rWt: $('rWt'), vWt: $('vWt'), wtRun: $('wtRun'),
+  envBase: $('envBase'), envList: $('envList'), envEditor: $('envEditor'), addEnv: $('addEnv'),
+  editBase: $('editBase'), baseEditor: $('baseEditor'), baseTods: $('baseTods'),
+  baseRains: $('baseRains'), evFrom: $('evFrom'), envAll: $('envAll'),
+  evMerge: $('evMerge'), evFromEdit: $('evFromEdit'), evFromEditor: $('evFromEditor'),
+  evFromTods: $('evFromTods'), evFromRains: $('evFromRains'),
+  rEvT0: $('rEvT0'), nEvT0: $('nEvT0'), rEvT1: $('rEvT1'), nEvT1: $('nEvT1'),
+  evTods: $('evTods'), evRains: $('evRains'),
+  evSetStart: $('evSetStart'), evSetEnd: $('evSetEnd'), evDel: $('evDel'),
+  recBtn: $('recBtn'), playBtn: $('playBtn'), freeBtn: $('freeBtn'),
+  tlLabel: $('tlLabel'), chainAll: $('chainAll'),
+  expVid: $('expVid'), expJson: $('expJson'), impJson: $('impJson'),
+  fsBtn: $('fsBtn'), cross: $('cross'), lockHint: $('lockHint'), toast: $('toast'),
+  fileImp: $('fileImp'),
+  bootErr: $('bootErr'), bootErrMsg: $('bootErrMsg'), bootReload: $('bootReload'),
+  tlBar: $('tlBar'), tlFill: $('tlFill'), tlHead: $('tlHead'),
+  tlEvLayer: $('tlEvLayer'), tlTicks: $('tlTicks'), transport: $('transport'),
+};
+
+let api = null;                       // iframe 驱动句柄
+let mode = 'boot';                    // boot | live | rec | play | pause | ff
+let segs = [];
+let sel = 0;
+let worldT = 0, lastTW = 0, worldRunning = false;
+let tod = 'dusk', rain = false;
+const fly = { x: 0, y: 8, z: 26, yaw: 0, pitch: 0, fov: 38 };
+let speed = 6, sens = 1;
+let recT = 0, lastSampleT = 0;
+let playT = 0, pbIdx = 0, ffTarget = 0;
+let armed = false, armTimer = 0;
+let exporting = false, recorder = null, recChunks = [], savedViewport = null;
+let syncingUI = false;
+let envSel = -1;                      // 当前选中的环境事件
+let baseEditOpen = false;             // 起点环境编辑区展开状态
+let evFromOpen = false;               // 事件起点编辑区展开状态
+let scrubEnv = null;                  // 暂停/定格时维持的精确环境状态
+let tlEvEls = [];
+let tlTicksKey = '';
+let tlDrag = null;
+const snapCache = {};
+
+/* 启动轮询尽早建立：后面任何可选 UI 初始化出错，也不会把启动一起带走 */
+els.bootReload.addEventListener('click', () => {
+  if (location.protocol === 'file:') location.href = 'http://localhost:8817/studio/';
+  else location.reload();
+});
+if (location.protocol === 'file:') {
+  showBootError('当前是直接双击打开的文件（file://），浏览器会阻止录制台驱动 iframe 场景。请点击下方按钮通过 http://localhost:8817/studio/ 打开。');
+  els.bootReload.textContent = '通过 8817 打开';
+}
+window.addEventListener('error', e => {
+  console.error(e.error || e.message);
+  if (mode === 'boot') showBootError('启动脚本出错：' + (e.message || '未知') + ' — 请点重新加载重试。');
+});
+window.addEventListener('unhandledrejection', e => {
+  console.error(e.reason);
+  if (mode === 'boot') showBootError('启动过程出错：' + ((e.reason && e.reason.message) || e.reason || '未知') + ' — 请点重新加载重试。');
+});
+const pollT = setInterval(boot, 250);
+
+/* ---------------- 小工具 ---------------- */
+const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
+function fmt(t) {
+  const s = Math.max(0, t);
+  return String(Math.floor(s / 60)).padStart(2, '0') + ':' +
+         (s % 60).toFixed(2).padStart(5, '0');
+}
+function phaseName(t) {
+  let n = PHASES[0].name;
+  for (const p of PHASES) if (t >= p.from) n = p.name;
+  return n;
+}
+function wrapAngle(a) { return ((a + Math.PI) % (Math.PI * 2) + Math.PI * 2) % (Math.PI * 2) - Math.PI; }
+function smooth01(u) { u = clamp(u, 0, 1); return u * u * (3 - 2 * u); }
+function curSeg() { return segs[sel]; }
+function toast(msg, ms = 2600) {
+  els.toast.textContent = msg;
+  els.toast.classList.add('show');
+  clearTimeout(toast._t);
+  toast._t = setTimeout(() => els.toast.classList.remove('show'), ms);
+}
+function todIdx(name) { return Math.max(0, TODS.indexOf(name)); }
+function envName(t_, r_) { return TOD_CN[todIdx(t_)] + (r_ ? ' · 雨' : ' · 晴'); }
+
+/* ---------------- 持久化 ---------------- */
+function saveProject() {
+  try {
+    localStorage.setItem(KEY, JSON.stringify({ v: 1, sel, segs }));
+  } catch (e) { console.warn('存储失败（可能超容量）', e); }
+}
+const saveSoon = (() => { let t = 0; return () => { clearTimeout(t); t = setTimeout(saveProject, 400); }; })();
+function loadProject() {
+  try {
+    const raw = localStorage.getItem(KEY);
+    if (!raw) return false;
+    const p = JSON.parse(raw);
+    if (!p || p.v !== 1 || !Array.isArray(p.segs) || !p.segs.length) return false;
+    segs = p.segs; sel = clamp(p.sel | 0, 0, segs.length - 1);
+    return true;
+  } catch (e) { return false; }
+}
+
+/* ---------------- 环境事件 ---------------- */
+function envOf(sg) { return sg && sg.env && Array.isArray(sg.env.events) ? sg.env : null; }
+function snapOfTarget(t_, r_) {
+  const key = todIdx(t_) + '|' + (r_ ? 1 : 0);
+  if (!snapCache[key] && api) snapCache[key] = api.stageSnapOf(TODS[todIdx(t_)], !!r_);
+  return snapCache[key] || null;
+}
+function ensureEnv(sg) {
+  if (envOf(sg)) return sg.env;
+  let t0 = tod, r0 = rain, snap = sg.stageSnap;
+  if (sg.samples && sg.samples.length) {
+    const s0 = sg.samples[0];
+    t0 = TODS[s0[TD]] || t0; r0 = !!s0[RN];
+  } else if (sg.stage0) { t0 = sg.stage0.tod || t0; r0 = !!sg.stage0.rain; }
+  if (!snap && api) snap = snapOfTarget(t0, r0);
+  const env = { base: { tod: t0, rain: r0, snap }, events: [] };
+  // 旧轨迹（v1，无 env 字段）导入后：把录到的离散天气/时段切换迁移成可编辑的渐变区间
+  if (sg.samples && sg.samples.length) {
+    let ct = t0, cr = r0;
+    for (const sm of sg.samples) {
+      const st = TODS[sm[TD]] || ct, sr = !!sm[RN];
+      if (st === ct && sr === cr) continue;
+      const t = sm[T];
+      const end = Math.min(sg.duration || (t + ENV_TRANS), t + ENV_TRANS);
+      if (end > t + 0.001) {
+        env.events.push({ t0: +t.toFixed(3), t1: +end.toFixed(3), tod: st, rain: sr });
+      }
+      ct = st; cr = sr;
+    }
+    if (env.events.length) toast('已把旧轨迹中的 ' + env.events.length + ' 次天气切换转为可编辑渐变', 3200);
+  }
+  sg.env = env;
+  normalizeEnv(sg);
+  return sg.env;
+}
+function envBaseGuess(sg) {
+  const env = envOf(sg);
+  if (env) return env.base;
+  if (sg && sg.samples && sg.samples.length) {
+    const s0 = sg.samples[0];
+    return { tod: TODS[s0[TD]] || tod, rain: !!s0[RN] };
+  }
+  // 未录制：开录时会以当前天气/时段为起点
+  return { tod: tod, rain: !!rain };
+}
+function envEventFrom(env, i) {
+  const e = env.events[i];
+  if (e && e.fromTod) return { tod: e.fromTod, rain: !!e.fromRain };
+  return i <= 0 ? env.base : env.events[i - 1];
+}
+function normalizeEnv(sg, mergeIntro) {
+  const env = envOf(sg);
+  if (!env) return false;
+  let changed = false;
+  env.events.sort((a, b) => a.t0 - b.t0);
+  // 导入时：base 还是默认「晨晴」且开场 4.5s 内有一个逃离开场的过渡，
+  // 把它并入段起点（例：晨晴→午晴 的冗余开场变成直接从午晴开始）。
+  if (mergeIntro) {
+    while (env.events.length >= 2) {
+      const e0 = env.events[0], e1 = env.events[1];
+      const base = env.base;
+      const escapeDefault = base.tod === 'morning' &&
+        (e0.tod !== base.tod || !!e0.rain !== !!base.rain);
+      if (!escapeDefault || e0.fromTod || e1.fromTod) break;
+      if (e0.t0 > 2.5 || e0.t1 > 4.5) break;
+      if (e1.t0 < e0.t1 - 0.05) break;
+      env.base.tod = e0.tod;
+      env.base.rain = !!e0.rain;
+      const sn = snapOfTarget(e0.tod, e0.rain);
+      if (sn) env.base.snap = sn;
+      env.events.shift();
+      changed = true;
+    }
+  }
+  // 段首极短切换（≤0.06s）= 想让整段直接从该环境开始 ⇒ 并入段起点，不再需要“切换”
+  while (env.events.length) {
+    const e = env.events[0];
+    if (e.t0 <= 0.02 && (e.t1 - e.t0) <= 0.06) {
+      env.base.tod = e.tod;
+      env.base.rain = !!e.rain;
+      const sn = snapOfTarget(e.tod, e.rain);
+      if (sn) env.base.snap = sn;
+      env.events.shift();
+      changed = true;
+    } else break;
+  }
+  // 清掉无效区间与“起点=终点”的空渐变
+  for (let i = 0; i < env.events.length;) {
+    const e = env.events[i];
+    if (e.t1 <= e.t0 + 0.002) { env.events.splice(i, 1); changed = true; continue; }
+    if (sg.duration && e.t1 > sg.duration) { e.t1 = +sg.duration.toFixed(3); changed = true; }
+    const from = envEventFrom(env, i);
+    if (from.tod === e.tod && !!from.rain === !!e.rain) {
+      env.events.splice(i, 1); changed = true; continue;
+    }
+    i++;
+  }
+  if (changed) envSel = -1;
+  return changed;
+}
+function envPrevOf(env, i) { return i <= 0 ? env.base : env.events[i - 1]; }
+function envStateAt(sg, t) {
+  const env = envOf(sg);
+  if (!env) return null;
+  let prev = env.base;
+  let prevSnap = prev.snap || snapOfTarget(prev.tod, prev.rain);
+  let active = null, activeA = null, activeSnap = null;
+  for (let i = 0; i < env.events.length; i++) {
+    const e = env.events[i];
+    if (t < e.t0) break;
+    const es = snapOfTarget(e.tod, e.rain);
+    const eFrom = e.fromTod ? (snapOfTarget(e.fromTod, e.fromRain) || prevSnap) : prevSnap;
+    if (t < e.t1) {
+      // 后开始的事件覆盖前一个未完成的过渡；显式起点优先于自动接续
+      active = e; activeA = eFrom; activeSnap = es;
+    }
+    prev = e; prevSnap = es;
+  }
+  if (active) {
+    return { a: activeA, b: activeSnap,
+             u: smooth01((t - active.t0) / Math.max(1e-6, active.t1 - active.t0)),
+             tod: active.tod, rain: !!active.rain, idx: env.events.indexOf(active) };
+  }
+  return { a: prevSnap, b: null, u: 1, tod: prev.tod, rain: !!prev.rain, idx: -1 };
+}
+function syncTodRain(state) {
+  if (!state) return;
+  const changed = state.tod !== tod || !!state.rain !== rain;
+  tod = state.tod; rain = !!state.rain;
+  if (changed) syncSliders();
+}
+
+/* ---------------- 分段 UI ---------------- */
+function renderSegList() {
+  els.segList.innerHTML = '';
+  segs.forEach((sg, i) => {
+    const row = document.createElement('div');
+    row.className = 'seg' + (i === sel ? ' on' : '');
+    const nm = document.createElement('span');
+    nm.className = 'nm'; nm.textContent = sg.name; nm.title = '双击重命名';
+    const meta = document.createElement('span');
+    meta.className = 'meta';
+    const envN = envOf(sg) ? sg.env.events.length : 0;
+    meta.textContent = sg.samples.length
+      ? fmt(sg.duration) + ' · ' + sg.samples.length + '帧' + (envN ? ' · 环境' + envN : '')
+      : '未录制';
+    const bPlay = mkBtn('▶', () => { selectSeg(i); startPlay(0); }, '播放本段');
+    const bRec  = mkBtn('⏺', () => { selectSeg(i); armed = false; startRecord(); }, '重录（覆盖）');
+    const bDel  = mkBtn('✕', () => delSeg(bDel, i), '删除');
+    row.append(nm, meta, bPlay, bRec, bDel);
+    row.addEventListener('click', e => { if (e.target === row || e.target === nm) selectSeg(i); });
+    nm.addEventListener('dblclick', () => renameSeg(nm, sg));
+    els.segList.appendChild(row);
+  });
+}
+function mkBtn(txt, fn, title) {
+  const b = document.createElement('button');
+  b.textContent = txt; b.title = title;
+  b.addEventListener('click', e => { e.stopPropagation(); fn(); });
+  return b;
+}
+function renameSeg(nmEl, sg) {
+  const inp = document.createElement('input');
+  inp.value = sg.name;
+  nmEl.textContent = ''; nmEl.appendChild(inp);
+  inp.focus(); inp.select();
+  const done = ok => { if (ok && inp.value.trim()) sg.name = inp.value.trim(); renderSegList(); saveSoon(); };
+  inp.addEventListener('keydown', e => {
+    e.stopPropagation();
+    if (e.key === 'Enter') done(true);
+    if (e.key === 'Escape') done(false);
+  });
+  inp.addEventListener('blur', () => done(true));
+}
+function delSeg(btn, i) {
+  if (mode === 'rec') return;
+  if (btn.dataset.arm) {
+    segs.splice(i, 1);
+    if (!segs.length) segs.push(newSeg());
+    sel = clamp(sel, 0, segs.length - 1);
+    mode = 'live'; playT = 0; envSel = -1; scrubEnv = null; baseEditOpen = false;
+    renderSegList(); refreshEnvUI(); rebuildTlEvents(); saveSoon(); syncTransport();
+  } else {
+    btn.dataset.arm = '1'; btn.textContent = '确认?'; btn.classList.add('warn');
+    setTimeout(() => { if (btn.isConnected) { delete btn.dataset.arm; btn.textContent = '✕'; btn.classList.remove('warn'); } }, 2500);
+  }
+}
+function newSeg() {
+  return { name: '第' + (segs.length + 1) + '段', samples: [], duration: 0,
+           worldT0: 0, wallT0: 0, stage0: { tod, rain }, stageSnap: null, env: null };
+}
+function selectSeg(i) {
+  if (mode === 'rec' || mode === 'ff') return;
+  sel = i;
+  const sg = curSeg();
+  envSel = -1; scrubEnv = null; baseEditOpen = false;
+  mode = 'live'; playT = 0; pbIdx = 0;
+  if (sg.samples.length) {
+    const s0 = sg.samples[0];
+    Object.assign(fly, { x: s0[PX], y: s0[PY], z: s0[PZ], yaw: s0[YW], pitch: s0[PT_], fov: s0[FV] });
+    if (sg.stageSnap) api.restoreStage(sg.stageSnap);
+    worldT = sg.worldT0 % CYCLE;
+    api.seekWorld(worldT); lastTW = worldT;
+    const env0 = envStateAt(sg, 0);
+    if (env0) { syncTodRain(env0); api.applyEnv(env0, worldT); scrubEnv = env0; }
+    else applySampleStage(s0);
+  } else if (sg.stage0) {
+    applyStageUI(sg.stage0.tod, sg.stage0.rain);
+  }
+  worldRunning = false;
+  els.wtRun.textContent = '▶';
+  syncingUI = true;
+  els.rWt.value = worldT; els.rFov.value = fly.fov;
+  els.vWt.textContent = worldT.toFixed(2) + 's';
+  els.vPhase.textContent = phaseName(worldT);
+  syncingUI = false;
+  renderSegList(); refreshEnvUI(); rebuildTlEvents(); saveSoon(); syncTransport(); syncSliders();
+}
+
+/* ---------------- 天气 / 时段 ----------------
+ * live = 只改实时画面；rec = 自动记一次变化；
+ * pause/play/ff = 直接编辑本段当前变化的目标环境（没有事件就自动建一个）。 */
+function applyStageUI(t_, r_) {
+  const changed = (t_ !== tod) || (!!r_ !== rain);
+  tod = t_; rain = !!r_;
+  syncSliders();
+  if (!api) return;
+  if (mode === 'rec') {
+    api.setStage(tod, rain);
+    if (changed && curSeg().samples.length) recordEnvChange();
+    return;
+  }
+  const sg = curSeg();
+  if (mode === 'live' || !sg || !sg.samples.length) {
+    api.setStage(tod, rain);
+    if (mode === 'live' && (!sg || !sg.samples.length)) {
+      els.envBase.textContent = '起点（开录时锁定）：' + envName(tod, rain);
+    }
+    return;
+  }
+  if (changed && (mode === 'pause' || mode === 'play' || mode === 'ff')) {
+    editEnvTarget(t_, r_);
+  } else {
+    api.setStage(tod, rain);
+  }
+}
+function editEnvTarget(t_, r_) {
+  const sg = curSeg();
+  if (!sg || !sg.samples.length) return;
+  const env = ensureEnv(sg);
+  let ev = env.events[envSel];
+  if (ev && !(playT >= ev.t0 - 0.001 && playT <= ev.t1 + 0.001)) ev = null;
+  if (!ev) {
+    const hit = env.events.findIndex(e => playT >= e.t0 && playT <= e.t1);
+    if (hit >= 0) { envSel = hit; ev = env.events[hit]; }
+  }
+  let created = false;
+  if (!ev) {
+    const d = sg.duration;
+    const t0 = clamp(playT, 0, Math.max(0, d - 0.1));
+    const t1 = Math.min(d, t0 + Math.max(0.3, Math.min(ENV_TRANS, Math.max(0.3, d - t0))));
+    ev = { t0: +t0.toFixed(3), t1: +Math.max(t0 + 0.02, t1).toFixed(3), tod: t_, rain: !!r_ };
+    env.events.push(ev);
+    env.events.sort((a, b) => a.t0 - b.t0);
+    envSel = env.events.indexOf(ev);
+    created = true;
+  }
+  ev.tod = t_; ev.rain = !!r_;
+  refreshEnvUI(); rebuildTlEvents(); saveSoon();
+  if (created && mode === 'pause') {
+    // 新建时播放头若正好在 start，u=0 看不出变化；移到区间中点显示混合结果
+    playT = clamp((ev.t0 + ev.t1) / 2, 0, sg.duration);
+  }
+  if (mode === 'pause') scrubTo(playT);
+  else api.setStage(ev.tod, ev.rain);
+}
+function syncSliders() {
+  syncingUI = true;
+  els.rTod.value = todIdx(tod); els.vTod.textContent = TOD_CN[todIdx(tod)];
+  els.sTod.forEach((el, i) => el.classList.toggle('on', i === todIdx(tod)));
+  els.rRain.value = rain ? 1 : 0; els.vRain.textContent = rain ? '雨' : '晴';
+  els.sRain0.classList.toggle('on', !rain); els.sRain1.classList.toggle('on', rain);
+  syncingUI = false;
+}
+function applySampleStage(s) {
+  const t_ = TODS[s[TD]], r_ = !!s[RN];
+  if (t_ !== tod || r_ !== rain) { tod = t_; rain = r_; api.setStage(t_, r_); syncSliders(); }
+}
+
+/* ---------------- 录制 ---------------- */
+function startRecord() {
+  if (mode === 'rec' || !api) return;
+  if (mode === 'play' || mode === 'ff') stopPlayback();
+  const sg = curSeg();
+  armed = false; hideConfirm();
+  mode = 'rec'; recT = 0; lastSampleT = 0;
+  sg.samples = []; sg.duration = 0;
+  sg.worldT0 = worldT;
+  sg.wallT0 = api.getWallTime();
+  sg.stageSnap = api.snapStage();
+  sg.stage0 = { tod, rain };
+  sg.env = { base: { tod, rain, snap: sg.stageSnap }, events: [] };
+  envSel = -1; scrubEnv = null; baseEditOpen = false;
+  api.seekWorld(worldT); lastTW = worldT;      // 干净的瞬态基线
+  api.requestLock();
+  refreshEnvUI(); rebuildTlEvents();
+  syncTransport(); renderSegList();
+}
+function stopRecord() {
+  if (mode !== 'rec') return;
+  const sg = curSeg();
+  sg.duration = recT;
+  if (envOf(sg)) {
+    sg.env.events.forEach(e => {
+      e.t0 = clamp(e.t0, 0, Math.max(0, recT - 0.02));
+      e.t1 = clamp(e.t1, e.t0 + 0.02, Math.max(e.t0 + 0.02, recT));
+    });
+    normalizeEnv(sg);
+  }
+  mode = 'live'; worldRunning = false;
+  worldT = (sg.worldT0 + recT) % CYCLE; lastTW = worldT;
+  els.rWt.value = worldT;
+  els.wtRun.textContent = '▶';
+  toast('已记录 ' + sg.name + ' · ' + fmt(sg.duration) + ' · ' + sg.samples.length + ' 帧');
+  renderSegList(); refreshEnvUI(); rebuildTlEvents(); saveProject(); syncTransport();
+}
+function recFrame(dt) {
+  const sg = curSeg();
+  recT += dt;
+  const tW = (sg.worldT0 + recT) % CYCLE;
+  worldT = tW;
+  if (tW < lastTW - 0.02) api.resetTransient();   // 复刻页面跨圈重置
+  lastTW = tW;
+  const env = envStateAt(sg, recT);
+  api.stepWorld(dt, tW, env);
+  if (recT - lastSampleT >= MIN_SAMPLE_DT - 1e-6) {
+    sg.samples.push([+recT.toFixed(4), +(recT - lastSampleT).toFixed(4),
+      +fly.x.toFixed(3), +fly.y.toFixed(3), +fly.z.toFixed(3),
+      +fly.yaw.toFixed(4), +fly.pitch.toFixed(4), +fly.fov.toFixed(1),
+      todIdx(tod), rain ? 1 : 0]);
+    lastSampleT = recT;
+  }
+  els.recTime.textContent = fmt(recT);
+  els.rWt.value = tW; els.vWt.textContent = tW.toFixed(2) + 's';
+  els.vPhase.textContent = phaseName(tW);
+}
+
+/* 录制中调天气/时段：自动生成一次环境变化；0.6s 内连续调算同一次 */
+function recordEnvChange() {
+  const sg = curSeg();
+  if (!sg.samples.length) return;
+  const env = ensureEnv(sg);
+  const last = env.events[env.events.length - 1];
+  if (last && recT - last.t0 < 0.6) {
+    last.tod = tod; last.rain = !!rain;
+    last.t1 = recT + ENV_TRANS;
+    envSel = env.events.length - 1;
+  } else {
+    env.events.push({ t0: +recT.toFixed(3), t1: +(recT + ENV_TRANS).toFixed(3),
+                      tod, rain: !!rain });
+    envSel = env.events.length - 1;
+  }
+  refreshEnvUI(); rebuildTlEvents();
+}
+
+/* ---------------- 回放 ---------------- */
+function segPoseAt(sg, t, out) {
+  const s = sg.samples;
+  if (!s.length) return out;
+  if (t <= s[0][T]) { return copySample(s[0], out); }
+  const last = s[s.length - 1];
+  if (t >= last[T]) { return copySample(last, out); }
+  let lo = 0, hi = s.length - 1;
+  while (hi - lo > 1) { const mid = (lo + hi) >> 1; if (s[mid][T] <= t) lo = mid; else hi = mid; }
+  const a = s[lo], b = s[hi], u = (t - a[T]) / Math.max(1e-6, b[T] - a[T]);
+  out.x = a[PX] + (b[PX] - a[PX]) * u;
+  out.y = a[PY] + (b[PY] - a[PY]) * u;
+  out.z = a[PZ] + (b[PZ] - a[PZ]) * u;
+  out.yaw = a[YW] + wrapAngle(b[YW] - a[YW]) * u;
+  out.pitch = a[PT_] + (b[PT_] - a[PT_]) * u;
+  out.fov = a[FV] + (b[FV] - a[FV]) * u;
+  return out;
+}
+function copySample(s, out) {
+  out.x = s[PX]; out.y = s[PY]; out.z = s[PZ];
+  out.yaw = s[YW]; out.pitch = s[PT_]; out.fov = s[FV];
+  return out;
+}
+function resetWorldToSegBase(sg) {
+  api.seekWorld(sg.worldT0 % CYCLE);
+  api.setWallTime(sg.wallT0);
+  if (sg.stageSnap) api.restoreStage(sg.stageSnap);
+  const env0 = envStateAt(sg, 0);
+  if (env0) {
+    syncTodRain(env0);
+    api.applyEnv(env0, sg.worldT0 % CYCLE);
+    scrubEnv = env0;
+  } else {
+    const s0 = sg.samples[0];
+    tod = TODS[s0[TD]]; rain = !!s0[RN];
+    api.setStage(tod, rain); syncSliders();
+    scrubEnv = null;
+  }
+  lastTW = sg.worldT0 % CYCLE;
+}
+function startPlay(fromT) {
+  const sg = curSeg();
+  if (!sg.samples.length || !api) return;
+  if (mode === 'rec') return;
+  let from = fromT || 0;
+  if (from >= sg.duration - 0.05) from = 0;
+  els.ffBadge.style.display = 'none';
+  resetWorldToSegBase(sg);
+  api.setWallTime(sg.wallT0);
+  playT = from;
+  if (from > 0.02) {
+    mode = 'ff'; pbIdx = 0; ffTarget = from;
+    els.ffBadge.style.display = 'block';
+  } else {
+    mode = 'play'; pbIdx = 0;
+  }
+  syncTransport();
+}
+function consumeOne(sg, sm) {
+  if (sm[DT] > 0) {
+    const tW = (sg.worldT0 + sm[T]) % CYCLE;
+    if (tW < lastTW - 0.02) api.resetTransient();
+    lastTW = tW;
+    const env = envStateAt(sg, sm[T]);
+    if (!env) applySampleStage(sm);
+    api.stepWorld(sm[DT], tW, env);
+  }
+}
+function consumeSamples(sg, untilT) {
+  const s = sg.samples;
+  while (pbIdx < s.length && s[pbIdx][T] <= untilT) {
+    consumeOne(sg, s[pbIdx]);
+    pbIdx++;
+  }
+}
+function playFrame(dt) {
+  const sg = curSeg();
+  playT += dt;
+  consumeSamples(sg, playT);
+  if (playT >= sg.duration - 1e-4) { endPlayback(); return; }
+  const pose = segPoseAt(sg, playT, {});
+  api.setPose(pose.x, pose.y, pose.z, pose.yaw, pose.pitch, pose.fov);
+  const tW = (sg.worldT0 + playT) % CYCLE;
+  worldT = tW;
+  const env = envStateAt(sg, playT);
+  if (env) {
+    scrubEnv = env;
+    syncTodRain(env);
+    api.applyEnv(env, tW);
+  }
+  els.rWt.value = tW; els.vWt.textContent = tW.toFixed(2) + 's';
+  els.vPhase.textContent = phaseName(tW);
+}
+function ffFrame() {
+  const sg = curSeg();
+  const s = sg.samples;
+  let n = 0;
+  while (pbIdx < s.length && s[pbIdx][T] <= ffTarget && n < 150) {
+    consumeOne(sg, s[pbIdx]);
+    pbIdx++; n++;
+  }
+  const done = pbIdx >= s.length || s[pbIdx][T] > ffTarget;
+  els.ffBadge.textContent = '定位中… ' + Math.round(clamp(pbIdx / Math.max(1, s.length), 0, 1) * 100) + '%';
+  const pose = segPoseAt(sg, Math.min(ffTarget, sg.duration), {});
+  api.setPose(pose.x, pose.y, pose.z, pose.yaw, pose.pitch, pose.fov);
+  const tW = (sg.worldT0 + ffTarget) % CYCLE;
+  worldT = tW;
+  const env = envStateAt(sg, ffTarget);
+  if (env) {
+    scrubEnv = env;
+    syncTodRain(env);
+    api.applyEnv(env, tW);
+  }
+  els.rWt.value = tW; els.vWt.textContent = tW.toFixed(2) + 's';
+  els.vPhase.textContent = phaseName(tW);
+  if (done) {
+    mode = 'play'; playT = ffTarget;
+    els.ffBadge.style.display = 'none';
+  }
+}
+function endPlayback() {
+  const sg = curSeg();
+  const last = sg.samples[sg.samples.length - 1];
+  Object.assign(fly, { x: last[PX], y: last[PY], z: last[PZ], yaw: last[YW], pitch: last[PT_], fov: last[FV] });
+  worldT = (sg.worldT0 + sg.duration) % CYCLE; lastTW = worldT;
+  worldRunning = false;
+  mode = 'live'; playT = sg.duration;
+  els.rWt.value = worldT;
+  const env = envStateAt(sg, sg.duration);
+  if (env) {
+    scrubEnv = env;
+    syncTodRain(env);
+    api.setStage(env.tod, env.rain);
+    api.applyEnv(env, worldT);
+  }
+  if (exporting) { finishExport(true); return; }
+  // 连播：自动接到下一段已录制的段落
+  if (els.chainAll.checked) {
+    const nxt = segs.findIndex((s2, i) => i > sel && s2.samples.length);
+    if (nxt >= 0) { selectSeg(nxt); startPlay(0); return; }
+  }
+  toast(sg.name + ' 回放完毕（相机已停在末帧，可继续飞）');
+  syncTransport(); syncSliders();
+}
+function stopPlayback() {          // play/ff → 停住
+  if (mode !== 'play' && mode !== 'ff') return;
+  if (exporting) finishExport(false);
+  mode = 'pause';
+  els.ffBadge.style.display = 'none';
+  syncTransport();
+}
+function togglePlay() {
+  if (mode === 'play') { mode = 'pause'; syncTransport(); return; }
+  if (mode === 'pause') {
+    const sg = curSeg();
+    if (playT >= sg.duration - 0.05) { startPlay(0); return; }
+    resetWorldToSegBase(sg);       // 从头快进到 playT，保证世界状态精确
+    mode = 'ff'; pbIdx = 0; ffTarget = playT;
+    els.ffBadge.style.display = 'block';
+    syncTransport(); return;
+  }
+  if (mode === 'live' || mode === 'boot') startPlay(playT >= (curSeg().duration || 0) ? 0 : playT);
+}
+function toFree() {
+  if (mode === 'rec') return;
+  if (exporting) finishExport(false);
+  if (mode === 'play' || mode === 'ff') stopPlayback();
+  mode = 'live';
+  worldRunning = false;
+  els.wtRun.textContent = '▶';
+  scrubEnv = null;
+  syncTransport();
+}
+
+/* ---------------- 预览（拖时间轴） ---------------- */
+function scrubTo(t) {
+  const sg = curSeg();
+  if (!sg.samples.length) return;
+  if (mode === 'rec') return;
+  if (mode === 'play' || mode === 'ff') { mode = 'pause'; els.ffBadge.style.display = 'none'; if (exporting) finishExport(false); }
+  playT = clamp(t, 0, sg.duration);
+  const tW = (sg.worldT0 + playT) % CYCLE;
+  worldT = tW;
+  const env = envStateAt(sg, playT);
+  if (!env) {
+    let idx = 0;
+    const s = sg.samples;
+    for (let i = 0; i < s.length; i++) { if (s[i][T] <= playT) idx = i; else break; }
+    applySampleStage(s[idx]);
+  } else {
+    syncTodRain(env);
+    api.setStage(env.tod, env.rain);
+  }
+  api.seekWorld(tW); lastTW = tW;
+  api.setWallTime(sg.wallT0 + playT);
+  for (let k = 0; k < 5; k++) api.stepWorld(1 / 60, (tW + (k + 1) / 60) % CYCLE, env);  // 瞬态预热
+  if (env) {
+    api.applyEnv(env, tW);
+    scrubEnv = env;
+  } else scrubEnv = null;
+  const pose = segPoseAt(sg, playT, {});
+  Object.assign(fly, pose);
+  api.setPose(pose.x, pose.y, pose.z, pose.yaw, pose.pitch, pose.fov);
+  mode = 'pause';
+  els.rWt.value = tW; els.vWt.textContent = tW.toFixed(2) + 's';
+  els.vPhase.textContent = phaseName(tW);
+  syncTransport();
+}
+
+/* ---------------- 飞行 ---------------- */
+function flyFrame(dt) {
+  const k = api.input.keys;
+  const mdx = api.input.mdx; api.input.mdx = 0;
+  const mdy = api.input.mdy; api.input.mdy = 0;
+  fly.yaw -= mdx * MOUSE_K * sens;
+  fly.pitch = clamp(fly.pitch - mdy * MOUSE_K * sens, -1.55, 1.55);
+  const boost = (k.ShiftLeft || k.ShiftRight) ? 2.5 : 1;
+  const sp = speed * boost * dt;
+  const fwd = (k.KeyW ? 1 : 0) - (k.KeyS ? 1 : 0);
+  const str = (k.KeyD ? 1 : 0) - (k.KeyA ? 1 : 0);
+  const vert = (k.KeyC || k.KeyE ? 1 : 0) - (k.ControlLeft || k.ControlRight || k.KeyQ ? 1 : 0);
+  if (fwd || str || vert) {
+    const sy = Math.sin(fly.yaw), cy = Math.cos(fly.yaw);
+    fly.x += (-sy * fwd + cy * str) * sp;
+    fly.z += (-cy * fwd - sy * str) * sp;
+    fly.y += vert * sp;
+  }
+  api.setPose(fly.x, fly.y, fly.z, fly.yaw, fly.pitch, fly.fov);
+}
+
+/* ---------------- 主循环 ----------------
+ * RAF 为主 + 16ms 定时器看门狗兜底（面板遮挡/切走时 RAF 会被浏览器冻结，
+ * 回来后自动恢复 vsync；两者并用按 8ms 去重，避免双倍步进）。 */
+let lastTickAt = 0, timerArmed = false;
+function pump() {
+  requestAnimationFrame(pump);
+  if (!timerArmed) {
+    timerArmed = true;
+    setTimeout(() => { timerArmed = false; pump(); }, 16);
+  }
+  const now = performance.now();
+  if (now - lastTickAt < 8) return;
+  const dt = clamp((now - lastTickAt) / 1000, 0, 0.05);
+  lastTickAt = now;
+  if (api) loopBody(dt);
+}
+function loopBody(dt) {
+  if (mode === 'live') {
+    flyFrame(dt);
+    if (worldRunning) worldT = (worldT + dt) % CYCLE;
+    // 世界时间可暂停，但舞台照常推进 —— 调天气/时段能立即看到过渡
+    api.stepWorld(dt, worldT);
+    if (!syncingUI) { els.rWt.value = worldT; els.vWt.textContent = worldT.toFixed(2) + 's'; }
+    els.vPhase.textContent = phaseName(worldT);
+    scrubEnv = null;
+  } else if (mode === 'rec') {
+    flyFrame(dt);
+    recFrame(dt);
+  } else if (mode === 'play') {
+    playFrame(dt);
+  } else if (mode === 'ff') {
+    ffFrame();
+  } else if (mode === 'pause') {
+    // 定格时仍推进雨丝/氛围，再把环境钉回精确的事件曲线
+    api.stepWorld(dt, worldT);
+    if (scrubEnv) api.applyEnv(scrubEnv, worldT);
+  }
+  api.render();
+  paintTimeline();
+}
+
+/* ---------------- 走带 / 按钮 ---------------- */
+function syncTransport() {
+  const sg = curSeg();
+  const has = !!(sg && sg.samples.length);
+  const rec = mode === 'rec';
+  const lockEnv = rec || exporting || !has;
+  els.recBtn.textContent = rec ? '⏹ 结束记录' : (armed ? '⏺ 确认重录?' : '⏺ 开始记录');
+  els.recBtn.classList.toggle('rec', rec);
+  els.recBtn.classList.toggle('armed', armed && !rec);
+  els.playBtn.textContent = mode === 'play' ? '⏸' : '▶';
+  els.playBtn.disabled = !has || rec || exporting;
+  els.freeBtn.disabled = rec || exporting || mode === 'live';
+  els.tlBar.classList.toggle('empty', !has && !rec);
+  els.tlBar.style.cursor = (rec || !has) ? 'default' : 'crosshair';
+  els.tlLabel.textContent = rec
+    ? fmt(recT) + ' / ' + fmt(recT) + ' · REC'
+    : fmt(playT) + ' / ' + fmt(has ? sg.duration : 0);
+  const editable = mode === 'live';
+  els.rSpeed.disabled = mode === 'boot';
+  els.rSens.disabled = mode === 'boot';
+  els.rFov.disabled = !(mode === 'live' || rec);
+  // 天气/时段不再在暂停时锁死：暂停/回放里调它们＝直接改当前变化的目标
+  els.rRain.disabled = els.rTod.disabled = mode === 'boot';
+  els.rWt.disabled = !editable;
+  els.wtRun.disabled = !editable;
+  els.expVid.disabled = !has || rec || exporting;
+  els.expJson.disabled = rec || exporting;
+  els.impJson.disabled = rec || exporting;
+  els.addEnv.disabled = lockEnv;
+  els.editBase.disabled = lockEnv;
+  els.envEditor.classList.toggle('locked', lockEnv);
+  els.baseEditor.classList.toggle('locked', lockEnv);
+  els.envList.style.pointerEvents = lockEnv ? 'none' : '';
+  els.modeTag.className = rec ? 'rec' : '';
+  els.modeTag.textContent = ({
+    boot: '加载中…', live: '自由飞行', rec: '● 记录中', play: '回放', pause: '暂停', ff: '定位'
+  })[mode] || '';
+  els.cross.style.display = (mode === 'live' || rec) ? 'block' : 'none';
+  els.recBadge.style.display = (rec || exporting) ? 'flex' : 'none';
+  els.recKind.textContent = rec ? 'REC' : '内录';
+  if (!rec && !exporting) els.recTime.textContent = '';
+  els.chainAll.disabled = exporting;
+  paintTimeline();
+  updateTransportHeight();
+}
+function showConfirm(msg) {
+  els.confirmBox.textContent = msg;
+  els.confirmBox.style.display = 'block';
+  clearTimeout(armTimer);
+  armTimer = setTimeout(() => { armed = false; hideConfirm(); syncTransport(); }, 4000);
+}
+function hideConfirm() { els.confirmBox.style.display = 'none'; }
+
+function spaceAction() {
+  if (mode === 'rec') { stopRecord(); return; }
+  if (mode === 'play' || mode === 'ff') { stopPlayback(); return; }
+  const sg = curSeg();
+  if (sg.samples.length && !armed) {
+    armed = true;
+    showConfirm(sg.name + ' 已有 ' + fmt(sg.duration) + ' 记录 — 再按一次空格确认重录（Esc 取消）');
+    syncTransport();
+    return;
+  }
+  startRecord();
+}
+function onKey(code, down, repeat) {
+  if (!api) return;
+  if (down && !repeat) {
+    if (code === 'Space') spaceAction();
+    else if (code === 'KeyP') togglePlay();
+    else if (code === 'KeyF') toggleFullscreen();
+    else if (code === 'Escape' && armed) { armed = false; hideConfirm(); syncTransport(); }
+  }
+  syncTransportLite();
+}
+let liteT = 0;
+function syncTransportLite() {   // 按键只影响按钮文案/准星，节流
+  const now = performance.now();
+  if (now - liteT < 100) return;
+  liteT = now;
+  els.cross.style.display = (mode === 'live' || mode === 'rec') ? 'block' : 'none';
+}
+
+/* ---------------- 时间轴 ---------------- */
+function tlDur() { return mode === 'rec' ? recT : (curSeg() ? curSeg().duration : 0); }
+function tlTime() { return mode === 'rec' ? recT : (mode === 'ff' ? ffTarget : playT); }
+function xToT(clientX) {
+  const r = els.tlBar.getBoundingClientRect();
+  return clamp((clientX - r.left) / Math.max(1, r.width), 0, 1) * tlDur();
+}
+function paintTimeline() {
+  const sg = curSeg();
+  const dur = tlDur();
+  const t = tlTime();
+  const p = dur > 0 ? clamp(t / dur, 0, 1) : 0;
+  els.tlFill.style.width = (p * 100) + '%';
+  els.tlHead.style.display = dur > 0 ? 'block' : 'none';
+  els.tlHead.style.left = (p * 100) + '%';
+  els.tlLabel.textContent = mode === 'rec'
+    ? fmt(recT) + ' / ' + fmt(recT) + ' · REC'
+    : fmt(playT) + ' / ' + fmt(dur);
+  if (dur > 0) {
+    for (const m of tlEvEls) {
+      m.el.style.left = (m.e.t0 / dur * 100) + '%';
+      m.el.style.width = (Math.max(0.004, (m.e.t1 - m.e.t0) / dur) * 100) + '%';
+    }
+  }
+  const key = (sg ? (sg.worldT0 || 0) : 0) + '|' + Math.round(dur * 2) + '|' + (envOf(sg) ? 'e' : 'n');
+  if (key !== tlTicksKey) { tlTicksKey = key; renderTicks(sg, dur); }
+}
+function renderTicks(sg, dur) {
+  els.tlTicks.innerHTML = '';
+  if (!sg || dur <= 0) return;
+  const base = (sg.worldT0 || 0) % CYCLE;
+  const seen = new Set();
+  const add = (t, name, edge) => {
+    if (t < -0.001 || t > dur + 0.001 || seen.has(name)) return;
+    seen.add(name);
+    const el = document.createElement('span');
+    el.className = 'tick' + (edge ? ' edge' : '');
+    el.style.left = (clamp(t / dur, 0, 1) * 100) + '%';
+    el.textContent = name;
+    els.tlTicks.appendChild(el);
+  };
+  add(0, phaseName(base), true);
+  for (const p of PHASES) {
+    const dt = ((p.from - base) % CYCLE + CYCLE) % CYCLE;
+    if (dt < 0.03) continue;
+    if (dt <= dur) add(dt, p.name, false);
+  }
+}
+function rebuildTlEvents() {
+  const sg = curSeg();
+  const env = envOf(sg);
+  els.tlEvLayer.innerHTML = '';
+  tlEvEls = [];
+  if (!env || !sg.samples.length) { paintTimeline(); return; }
+  const locked = mode === 'rec' || exporting;
+  env.events.forEach((e, i) => {
+    const el = document.createElement('div');
+    el.className = 'evBar' + (i === envSel ? ' on' : '');
+    const fromEv = envEventFrom(env, i);
+    el.title = '天气/时段渐变 ' + fmt(e.t0) + ' → ' + fmt(e.t1) + '：' +
+      envName(fromEv.tod, fromEv.rain) + ' ⟶ ' + envName(e.tod, e.rain) +
+      '\n拖两端的 start / finish 红色把手调整渐变起止（只改环境，不裁剪片段）';
+    const h0 = document.createElement('span'); h0.className = 'evHd h0';
+    const h1 = document.createElement('span'); h1.className = 'evHd h1';
+    const t0 = document.createElement('i'); t0.className = 'tag'; t0.textContent = 'start';
+    const t1 = document.createElement('i'); t1.className = 'tag'; t1.textContent = 'finish';
+    h0.appendChild(t0); h1.appendChild(t1);
+    el.append(h0, h1);
+    if (!locked) {
+      el.addEventListener('pointerdown', ev => {
+        if (ev.target.closest('.evHd')) return;
+        ev.stopPropagation();
+        selectEnvEvent(i, true);
+      });
+      if (i === envSel) {
+        bindEvHandle(h0, i, 't0');
+        bindEvHandle(h1, i, 't1');
+      }
+    }
+    els.tlEvLayer.appendChild(el);
+    tlEvEls.push({ e, el, h0, h1 });
+  });
+  paintTimeline();
+}
+function bindEvHandle(hd, i, which) {
+  hd.addEventListener('pointerdown', ev => {
+    if (mode === 'rec' || exporting) return;
+    ev.preventDefault(); ev.stopPropagation();
+    const sg = curSeg(), env = envOf(sg);
+    const e = env && env.events[i];
+    if (!e) return;
+    hd.setPointerCapture(ev.pointerId);
+    const move = m => {
+      if (m.pointerId !== ev.pointerId) return;
+      let t = Math.round(xToT(m.clientX) * 1000) / 1000;
+      if (which === 't0') e.t0 = clamp(t, 0, e.t1 - 0.02);
+      else e.t1 = clamp(t, e.t0 + 0.02, sg.duration);
+      syncEvEditorValues(e);
+      playT = which === 't0' ? e.t0 : e.t1;
+      scrubTo(playT);
+    };
+    const up = m => {
+      hd.removeEventListener('pointermove', move);
+      hd.removeEventListener('pointerup', up);
+      hd.removeEventListener('pointercancel', up);
+      const arr = env.events;
+      const cur = arr[i];
+      arr.sort((a, b) => a.t0 - b.t0);
+      envSel = Math.max(0, arr.indexOf(cur));
+      refreshEnvUI(); rebuildTlEvents(); saveSoon();
+    };
+    hd.addEventListener('pointermove', move);
+    hd.addEventListener('pointerup', up);
+    hd.addEventListener('pointercancel', up);
+  });
+}
+function bindTimelineBar() {
+  els.tlBar.addEventListener('pointerdown', ev => {
+    if (mode === 'rec' || exporting || !curSeg().samples.length) return;
+    if (ev.target.closest('.evBar')) return;
+    ev.preventDefault();
+    tlDrag = { pointerId: ev.pointerId };
+    els.tlBar.setPointerCapture(ev.pointerId);
+    scrubTo(xToT(ev.clientX));
+    els.tlBar.focus({ preventScroll: true });
+  });
+  els.tlBar.addEventListener('pointermove', ev => {
+    if (!tlDrag || tlDrag.pointerId !== ev.pointerId) return;
+    scrubTo(xToT(ev.clientX));
+  });
+  const end = ev => { if (tlDrag && tlDrag.pointerId === ev.pointerId) tlDrag = null; };
+  els.tlBar.addEventListener('pointerup', end);
+  els.tlBar.addEventListener('pointercancel', end);
+  els.tlBar.addEventListener('keydown', ev => {
+    if (mode === 'rec' || exporting || !curSeg().samples.length) return;
+    if (ev.key !== 'ArrowLeft' && ev.key !== 'ArrowRight') return;
+    ev.preventDefault(); ev.stopPropagation();
+    const base = ev.shiftKey ? 0.01 : 0.1;
+    const d = ev.key === 'ArrowLeft' ? -base : base;
+    scrubTo(clamp(playT + d, 0, curSeg().duration));
+  });
+}
+
+/* ---------------- 环境事件 UI ---------------- */
+function envShort(t_, r_) { return TOD_CN[todIdx(t_)] + (r_ ? '雨' : '晴'); }
+function refreshEnvUI() {
+  const sg = curSeg();
+  const env = envOf(sg);
+  if (env) { env.events.sort((a, b) => a.t0 - b.t0); envSel = clamp(envSel, -1, env.events.length - 1); }
+  const hasSamples = !!(sg && sg.samples.length);
+  const base = envBaseGuess(sg);
+  els.envBase.textContent = hasSamples
+    ? '起点：' + envName(base.tod, base.rain) + (env ? '' : '（录制原样）')
+    : '起点（开录时锁定）：' + envName(base.tod, base.rain);
+  els.baseEditor.style.display = baseEditOpen ? 'block' : 'none';
+  els.editBase.textContent = baseEditOpen ? '收起' : '改';
+  els.baseTods.querySelectorAll('.chip').forEach(b => {
+    b.classList.toggle('on', TODS[+b.dataset.tod] === base.tod);
+  });
+  els.baseRains.querySelectorAll('.chip').forEach(b => {
+    b.classList.toggle('on', (b.dataset.rain === '1') === !!base.rain);
+  });
+  els.envList.innerHTML = '';
+  if (!env || !env.events.length) {
+    const d = document.createElement('div');
+    d.id = 'envEmpty';
+    d.textContent = hasSamples
+      ? '本段还没有环境变化。点「＋ 渐变」，或暂停后在右侧直接拖天气/时段。'
+      : '录制后可在这里精调环境渐变的起止时间。';
+    els.envList.appendChild(d);
+  } else {
+    env.events.forEach((e, i) => {
+      const from = envEventFrom(env, i);
+      const row = document.createElement('div');
+      row.className = 'evRow' + (i === envSel ? ' on' : '');
+      const dot = document.createElement('span'); dot.className = 'evDot';
+      const tm = document.createElement('span'); tm.className = 'evTime';
+      tm.textContent = e.t0.toFixed(2) + ' → ' + e.t1.toFixed(2);
+      const to = document.createElement('span'); to.className = 'evTo';
+      to.textContent = envShort(from.tod, from.rain) + ' → ' + envShort(e.tod, e.rain);
+      row.append(dot, tm, to);
+      row.title = '点击选中并预览；拖时间轴红色 start / finish 把手改渐变起止';
+      row.addEventListener('click', () => selectEnvEvent(i, true));
+      els.envList.appendChild(row);
+    });
+  }
+  const e = env && env.events[envSel];
+  els.envEditor.style.display = e ? 'block' : 'none';
+  if (e) {
+    const from = envEventFrom(env, envSel);
+    const manual = !!e.fromTod;
+    els.evFrom.textContent = '渐变起点：' + envName(from.tod, from.rain) +
+      (manual ? '（手动）' : '（自动接续）');
+    els.evFromEditor.style.display = evFromOpen ? 'block' : 'none';
+    els.evFromEdit.textContent = evFromOpen ? '收起' : '改';
+    els.evMerge.style.display = envSel === 0 ? 'inline-block' : 'none';
+    els.evFromTods.querySelectorAll('.chip').forEach(b => {
+      if (b.dataset.fromAuto === '1') b.classList.toggle('on', !manual);
+      else b.classList.toggle('on', !!(manual && TODS[+b.dataset.tod] === from.tod));
+    });
+    els.evFromRains.querySelectorAll('.chip').forEach(b => {
+      b.classList.toggle('on', (b.dataset.rain === '1') === !!from.rain);
+    });
+    syncEvEditorValues(e);
+    els.evTods.querySelectorAll('.chip').forEach(b => {
+      b.classList.toggle('on', TODS[+b.dataset.tod] === e.tod);
+    });
+    els.evRains.querySelectorAll('.chip').forEach(b => {
+      b.classList.toggle('on', (b.dataset.rain === '1') === !!e.rain);
+    });
+  } else {
+    els.evFromEditor.style.display = 'none';
+    els.evMerge.style.display = 'none';
+  }
+  const lock = mode === 'rec' || exporting || !hasSamples;
+  els.addEnv.disabled = lock;
+  els.editBase.disabled = lock;
+  els.envAll.disabled = lock;
+  els.evMerge.disabled = lock;
+  els.envEditor.classList.toggle('locked', lock);
+  els.baseEditor.classList.toggle('locked', lock);
+  els.envList.style.pointerEvents = lock ? 'none' : '';
+}
+function setBaseEnv(t_, r_) {
+  const sg = curSeg();
+  if (!sg || !sg.samples.length || mode === 'rec' || exporting) return;
+  const env = ensureEnv(sg);
+  env.base.tod = t_; env.base.rain = !!r_;
+  env.base.snap = snapOfTarget(t_, r_) || env.base.snap;
+  tod = t_; rain = !!r_; syncSliders();
+  const normalized = normalizeEnv(sg);
+  if (normalized) envSel = env.events.length ? 0 : -1;
+  refreshEnvUI(); rebuildTlEvents(); saveSoon();
+  if (mode === 'live') api.setStage(t_, r_);
+  scrubTo(0);
+  toast('本段起点环境：' + envName(t_, r_) +
+    (normalized ? ' — 已自动整理与本段起点重复的渐变' : ''), 2800);
+}
+function mergeFirstIntoBase() {
+  const sg = curSeg(), env = envOf(sg);
+  if (!env || !env.events.length || envSel !== 0 || mode === 'rec' || exporting) return;
+  const e = env.events[0];
+  env.base.tod = e.tod;
+  env.base.rain = !!e.rain;
+  env.base.snap = snapOfTarget(e.tod, e.rain) || env.base.snap;
+  env.events.shift();
+  envSel = env.events.length ? 0 : -1;
+  evFromOpen = false;
+  tod = env.base.tod; rain = !!env.base.rain; syncSliders();
+  normalizeEnv(sg);
+  refreshEnvUI(); rebuildTlEvents(); saveSoon();
+  scrubTo(0);
+  toast('段首改为 ' + envName(env.base.tod, env.base.rain) +
+    '，这一段开场渐变已去掉，后续渐变会自动接续', 3600);
+}
+let envAllArm = 0;
+function setWholeSegmentEnv() {
+  const sg = curSeg();
+  if (!sg || !sg.samples.length || mode === 'rec' || exporting) return;
+  if (!envAllArm) {
+    envAllArm = Date.now();
+    els.envAll.textContent = '确认?';
+    els.envAll.classList.add('warn');
+    clearTimeout(setWholeSegmentEnv._t);
+    setWholeSegmentEnv._t = setTimeout(() => {
+      envAllArm = 0;
+      if (els.envAll.isConnected) { els.envAll.textContent = '整段'; els.envAll.classList.remove('warn'); }
+    }, 3200);
+    return;
+  }
+  envAllArm = 0;
+  els.envAll.textContent = '整段';
+  els.envAll.classList.remove('warn');
+  const env = ensureEnv(sg);
+  const ev = env.events[envSel];
+  const tgt = ev ? { tod: ev.tod, rain: !!ev.rain } : { tod: tod, rain: !!rain };
+  env.base.tod = tgt.tod; env.base.rain = tgt.rain;
+  env.base.snap = snapOfTarget(tgt.tod, tgt.rain) || env.base.snap;
+  env.events = [];
+  envSel = -1; evFromOpen = false; baseEditOpen = false;
+  tod = tgt.tod; rain = !!tgt.rain; syncSliders();
+  refreshEnvUI(); rebuildTlEvents(); saveSoon();
+  scrubTo(0);
+  toast('本段已固定为 ' + envName(tgt.tod, tgt.rain) + '（无渐变）', 2800);
+}
+function syncEvEditorValues(e) {
+  const sg = curSeg();
+  const d = Math.max(0.02, sg.duration || recT || 0.02);
+  els.rEvT0.max = els.rEvT1.max = d;
+  els.nEvT0.max = els.nEvT1.max = d;
+  els.rEvT0.value = e.t0; els.nEvT0.value = e.t0.toFixed(2);
+  els.rEvT1.value = e.t1; els.nEvT1.value = e.t1.toFixed(2);
+}
+function setEvTime(which, val) {
+  const sg = curSeg(), env = envOf(sg), e = env && env.events[envSel];
+  if (!e || mode === 'rec') return;
+  let v = Number(val);
+  if (!isFinite(v)) return;
+  v = Math.round(clamp(v, 0, sg.duration) * 1000) / 1000;
+  if (which === 't0') e.t0 = clamp(v, 0, e.t1 - 0.02);
+  else e.t1 = clamp(v, e.t0 + 0.02, sg.duration);
+  playT = which === 't0' ? e.t0 : e.t1;
+  scrubTo(playT);
+  refreshEnvUI();
+  rebuildTlEvents();
+  saveSoon();
+}
+function selectEnvEvent(i, preview) {
+  const sg = curSeg(), env = envOf(sg);
+  if (!env || !env.events[i] || mode === 'rec') return;
+  envSel = i;
+  evFromOpen = false;
+  if (api) api.exitLock();
+  refreshEnvUI();
+  rebuildTlEvents();
+  if (preview) {
+    const e = env.events[i];
+    scrubTo(clamp((e.t0 + e.t1) / 2, 0, sg.duration));
+  }
+}
+function setEvFrom(auto, t_, r_) {
+  const sg = curSeg(), env = envOf(sg), e = env && env.events[envSel];
+  if (!e || mode === 'rec' || exporting) return;
+  const prev = envPrevOf(env, envSel);
+  if (auto) {
+    delete e.fromTod;
+    delete e.fromRain;
+  } else {
+    const todV = t_ || e.fromTod || prev.tod;
+    const rainV = (r_ === undefined)
+      ? (e.fromRain !== undefined ? e.fromRain : prev.rain)
+      : !!r_;
+    e.fromTod = todV;
+    e.fromRain = rainV;
+  }
+  playT = e.t0;
+  scrubTo(playT);
+  refreshEnvUI(); rebuildTlEvents(); saveSoon();
+}
+function addEnvEvent() {
+  const sg = curSeg();
+  if (!sg || !sg.samples.length || mode === 'rec' || exporting) return;
+  const env = ensureEnv(sg);
+  const d = sg.duration;
+  let t0, t1;
+  if (playT > 0.05 && playT < d - 0.1) {
+    t0 = clamp(playT, 0, Math.max(0, d - 0.1));
+    t1 = Math.min(d, t0 + Math.max(0.4, Math.min(ENV_TRANS, Math.max(0.4, d - t0))));
+  } else {
+    // 段首添加时给一个参考图式的可见区间（约 12% → 50%）
+    t0 = Math.min(d * 0.12, Math.max(0, d - 0.5));
+    t1 = Math.min(d, Math.max(t0 + 0.4, d * 0.5));
+  }
+  if (t1 <= t0 + 0.02) { t0 = Math.max(0, d - 0.12); t1 = Math.min(d, t0 + 0.1); }
+  let prev = env.base;
+  for (const e of env.events) { if (e.t0 <= t0) prev = e; else break; }
+  const same = (tod === prev.tod && !!rain === !!prev.rain);
+  const ev = { t0: +t0.toFixed(3), t1: +t1.toFixed(3),
+               tod: same ? TODS[(todIdx(prev.tod) + 1) % 4] : tod,
+               rain: !!rain };
+  env.events.push(ev);
+  env.events.sort((a, b) => a.t0 - b.t0);
+  envSel = env.events.indexOf(ev);
+  evFromOpen = false;
+  refreshEnvUI(); rebuildTlEvents();
+  scrubTo(clamp((ev.t0 + ev.t1) / 2, 0, d));
+  saveSoon();
+  toast('已添加环境渐变 — 拖时间轴两端红色 start / finish 把手改起止', 3200);
+}
+function deleteEnvEvent() {
+  const sg = curSeg(), env = envOf(sg), e = env && env.events[envSel];
+  if (!e || mode === 'rec') return;
+  env.events.splice(envSel, 1);
+  envSel = -1;
+  evFromOpen = false;
+  refreshEnvUI(); rebuildTlEvents(); paintTimeline(); saveSoon();
+  toast('已删除该环境变化');
+}
+
+/* ---------------- 视频内录（WebM） ---------------- */
+function pickMime() {
+  const cands = ['video/webm;codecs=vp9', 'video/webm;codecs=vp8', 'video/webm'];
+  for (const c of cands) if (window.MediaRecorder && MediaRecorder.isTypeSupported(c)) return c;
+  return '';
+}
+function startExport() {
+  const sg = curSeg();
+  if (!sg.samples.length || mode === 'rec') return;
+  api.exitLock();
+  const iw = els.frame.contentWindow.innerWidth, ih = els.frame.contentWindow.innerHeight;
+  savedViewport = { w: iw, h: ih };
+  const W = 1280, H = 720;
+  api.setViewport(W, H);
+  const stream = api.canvas.captureStream(60);
+  const mime = pickMime();
+  try {
+    recorder = new MediaRecorder(stream, mime ? { mimeType: mime, videoBitsPerSecond: 16e6 } : undefined);
+  } catch (e) {
+    toast('MediaRecorder 不可用：' + e.message);
+    api.setViewport(iw, ih);
+    return;
+  }
+  recChunks = [];
+  recorder.ondataavailable = e => { if (e.data && e.data.size) recChunks.push(e.data); };
+  recorder.onstop = () => {
+    const blob = new Blob(recChunks, { type: 'video/webm' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = 'cranewick_' + sg.name + '_' + fmt(sg.duration).replace(':', 'm') + 's.webm';
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(a.href), 5000);
+  };
+  exporting = true;
+  recorder.start(250);
+  startPlay(0);
+  toast('内录预览视频中（' + W + '×' + H + '，实时 1×）…');
+}
+function finishExport(completed) {
+  if (!exporting) return;
+  exporting = false;
+  try { if (recorder && recorder.state !== 'inactive') recorder.stop(); } catch (e) {}
+  recorder = null;
+  if (savedViewport) { api.setViewport(savedViewport.w, savedViewport.h); api.restoreQuality(); }
+  if (mode === 'play' || mode === 'ff') { mode = 'pause'; els.ffBadge.style.display = 'none'; }
+  syncTransport();
+  if (completed) toast('预览视频已导出（WebM）');
+}
+
+/* ---------------- JSON 导入导出 ---------------- */
+function exportJson() {
+  const blob = new Blob([JSON.stringify({ v: 1, sel, segs }, null, 1)], { type: 'application/json' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  const d = new Date();
+  const stamp = d.getFullYear() + ('' + (d.getMonth() + 1)).padStart(2, '0') + ('' + d.getDate()).padStart(2, '0');
+  a.download = 'cranewick_studio_tracks_' + stamp + '.json';
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(a.href), 5000);
+  toast('已导出轨迹 JSON（相机 + 环境变化，可供渲染线复用）');
+}
+function applyProjectData(p, source) {
+  if (!p || p.v !== 1 || !Array.isArray(p.segs) || !p.segs.length) throw new Error('格式不对');
+  segs = p.segs; sel = clamp(p.sel | 0, 0, segs.length - 1);
+  let fixed = 0;
+  for (const sg of segs) {
+    try { if (normalizeEnv(sg, true)) fixed++; } catch (e) { console.warn(e); }
+  }
+  mode = 'live'; playT = 0; envSel = -1; scrubEnv = null; baseEditOpen = false;
+  renderSegList(); selectSeg(sel); rebuildTlEvents(); refreshEnvUI(); saveProject();
+  toast('已导入 ' + segs.length + ' 个段落' + (source ? ' · ' + source : '') +
+    (fixed ? ' · 已自动整理 ' + fixed + ' 段（段首过渡并入起点）' : '') +
+    ' — 点「＋ 渐变」或暂停后调天气/时段即可补环境渐变', 4800);
+}
+$('impJson').addEventListener('click', () => els.fileImp.click());
+els.fileImp.addEventListener('change', () => {
+  const f = els.fileImp.files[0];
+  els.fileImp.value = '';
+  if (!f) return;
+  const rd = new FileReader();
+  rd.onload = () => {
+    try {
+      applyProjectData(JSON.parse(rd.result), f.name);
+    } catch (e) { toast('导入失败：' + e.message); }
+  };
+  rd.readAsText(f);
+});
+
+/* ---------------- 全屏 ---------------- */
+function toggleFullscreen() {
+  if (!document.fullscreenElement) {
+    els.frame.requestFullscreen().then(() => api.lockKeys()).catch(() => {});
+  } else {
+    document.exitFullscreen().then(() => api.unlockKeys()).catch(() => {});
+  }
+}
+
+/* ---------------- UI 事件 ---------------- */
+window.__studio = { onKey, onLockChange };
+function onLockChange(locked) {
+  els.lockHint.style.display = 'none';
+  if (locked && mode === 'pause') {
+    mode = 'live'; scrubEnv = null; worldRunning = false;
+    els.wtRun.textContent = '▶';
+    syncTransport();
+  }
+  if (!locked && (mode === 'rec' || mode === 'live')) {
+    els.lockHint.textContent = '鼠标已释放 — 点击画面重新锁定';
+    els.lockHint.style.display = 'block';
+    clearTimeout(onLockChange._t);
+    onLockChange._t = setTimeout(() => els.lockHint.style.display = 'none', 3000);
+  }
+}
+
+els.recBtn.addEventListener('click', spaceAction);
+els.playBtn.addEventListener('click', togglePlay);
+els.freeBtn.addEventListener('click', toFree);
+els.addSeg.addEventListener('click', () => {
+  if (mode === 'rec') return;
+  segs.push(newSeg());
+  selectSeg(segs.length - 1);
+  toast('已新建段落，飞到机位后按空格开始记录');
+});
+els.expVid.addEventListener('click', startExport);
+els.expJson.addEventListener('click', exportJson);
+els.fsBtn.addEventListener('click', toggleFullscreen);
+els.addEnv.addEventListener('click', addEnvEvent);
+els.evDel.addEventListener('click', deleteEnvEvent);
+els.envAll.addEventListener('click', setWholeSegmentEnv);
+els.evMerge.addEventListener('click', mergeFirstIntoBase);
+els.evFromEdit.addEventListener('click', () => {
+  if (!envOf(curSeg()) || envSel < 0) return;
+  evFromOpen = !evFromOpen;
+  refreshEnvUI();
+});
+els.evFromTods.addEventListener('click', e => {
+  const b = e.target.closest('.chip');
+  if (!b || mode === 'rec' || exporting) return;
+  if (b.dataset.fromAuto === '1') setEvFrom(true);
+  else setEvFrom(false, TODS[+b.dataset.tod], undefined);
+});
+els.evFromRains.addEventListener('click', e => {
+  const b = e.target.closest('.chip');
+  if (!b || mode === 'rec' || exporting) return;
+  setEvFrom(false, undefined, b.dataset.rain === '1');
+});
+els.editBase.addEventListener('click', () => {
+  const sg = curSeg();
+  if (!sg || !sg.samples.length || mode === 'rec' || exporting) return;
+  if (!baseEditOpen) ensureEnv(sg);
+  baseEditOpen = !baseEditOpen;
+  refreshEnvUI(); rebuildTlEvents();
+});
+els.baseTods.addEventListener('click', e => {
+  const b = e.target.closest('.chip');
+  if (!b || mode === 'rec' || exporting) return;
+  const sg = curSeg();
+  if (!sg || !sg.samples.length) return;
+  setBaseEnv(TODS[+b.dataset.tod], envBaseGuess(sg).rain);
+});
+els.baseRains.addEventListener('click', e => {
+  const b = e.target.closest('.chip');
+  if (!b || mode === 'rec' || exporting) return;
+  const sg = curSeg();
+  if (!sg || !sg.samples.length) return;
+  setBaseEnv(envBaseGuess(sg).tod, b.dataset.rain === '1');
+});
+
+els.rEvT0.addEventListener('input', () => setEvTime('t0', els.rEvT0.value));
+els.rEvT1.addEventListener('input', () => setEvTime('t1', els.rEvT1.value));
+els.nEvT0.addEventListener('change', () => setEvTime('t0', els.nEvT0.value));
+els.nEvT1.addEventListener('change', () => setEvTime('t1', els.nEvT1.value));
+els.evSetStart.addEventListener('click', () => setEvTime('t0', playT));
+els.evSetEnd.addEventListener('click', () => setEvTime('t1', playT));
+els.evTods.addEventListener('click', e => {
+  const b = e.target.closest('.chip');
+  const env = envOf(curSeg()), ev = env && env.events[envSel];
+  if (!b || !ev || mode === 'rec') return;
+  ev.tod = TODS[+b.dataset.tod];
+  const mid = clamp((ev.t0 + ev.t1) / 2, 0, curSeg().duration);
+  refreshEnvUI(); rebuildTlEvents(); scrubTo(mid); saveSoon();
+});
+els.evRains.addEventListener('click', e => {
+  const b = e.target.closest('.chip');
+  const env = envOf(curSeg()), ev = env && env.events[envSel];
+  if (!b || !ev || mode === 'rec') return;
+  ev.rain = b.dataset.rain === '1';
+  const mid = clamp((ev.t0 + ev.t1) / 2, 0, curSeg().duration);
+  refreshEnvUI(); rebuildTlEvents(); scrubTo(mid); saveSoon();
+});
+
+els.rSpeed.addEventListener('input', () => { speed = +els.rSpeed.value; els.vSpeed.textContent = speed.toFixed(1) + ' m/s'; });
+els.rSens.addEventListener('input', () => { sens = +els.rSens.value; els.vSens.textContent = sens.toFixed(2); });
+els.rFov.addEventListener('input', () => { if (!syncingUI) { fly.fov = +els.rFov.value; } els.vFov.textContent = els.rFov.value + '°'; });
+els.rRain.addEventListener('input', () => { if (!syncingUI) applyStageUI(tod, els.rRain.value === '1'); });
+els.rTod.addEventListener('input', () => { if (!syncingUI) applyStageUI(TODS[+els.rTod.value], rain); });
+els.rWt.addEventListener('input', () => {
+  if (syncingUI) return;
+  worldT = +els.rWt.value; worldRunning = false;
+  els.wtRun.textContent = '▶';
+  api.seekWorld(worldT); lastTW = worldT;
+  els.vWt.textContent = worldT.toFixed(2) + 's';
+  els.vPhase.textContent = phaseName(worldT);
+});
+els.wtRun.addEventListener('click', () => {
+  worldRunning = !worldRunning;
+  els.wtRun.textContent = worldRunning ? '⏸' : '▶';
+});
+
+// 按钮点击后失焦，避免空格重复触发按钮
+document.addEventListener('click', e => {
+  const b = e.target.closest('button');
+  if (b) b.blur();
+});
+// 父页面键盘（焦点在父文档时同样可用；文本输入时除外）
+window.addEventListener('keydown', e => {
+  const t = e.target;
+  if (t && t.tagName === 'INPUT' && t.type !== 'range' && t.type !== 'checkbox' && t.type !== 'button') return;
+  if (e.code === 'Space' || e.code === 'KeyP' || e.code === 'KeyF') e.preventDefault();
+  onKey(e.code, true, e.repeat);
+});
+window.addEventListener('keyup', e => onKey(e.code, false, false));
+
+/* ---------------- 启动 ----------------
+ * 分两层：boot() 只负责等 iframe 场景就绪（失败有明确提示，不再无声卡“加载中”）；
+ * initStudio() 注入驱动并初始化录制台。所有可能失败的可选初始化都单独隔离，
+ * 避免一个 UI 小错误把启动轮询一起带走。 */
+let bootTries = 0;
+function showBootError(msg) {
+  els.modeTag.textContent = '加载失败';
+  els.modeTag.style.color = '#ff8d84';
+  if (msg) els.bootErrMsg.textContent = msg;
+  els.bootErr.style.display = 'block';
+  els.lockHint.style.display = 'none';
+}
+function hideBootError() {
+  els.modeTag.style.color = '';
+  els.bootErr.style.display = 'none';
+}
+function boot() {
+  let win = null, ready = false;
+  try {
+    win = els.frame.contentWindow;
+    ready = !!(win && win.CRANEWICK && win.CRANEWICK.ship);
+  } catch (e) {
+    if (++bootTries > 8 && location.protocol !== 'file:') {
+      showBootError('无法访问场景页面。请通过 http://localhost:8817/studio/ 打开，不要直接双击 HTML 文件。');
+    }
+    return;
+  }
+  if (!ready) {
+    if (++bootTries === 60) showBootError('场景加载超时。请确认地址是 http://localhost:8817/studio/，然后点下方重新加载。');
+    return;
+  }
+  clearInterval(pollT);
+  try {
+    initStudio(win);
+  } catch (e) {
+    console.error(e);
+    showBootError('初始化失败：' + ((e && e.message) || e) + ' — 请点重新加载重试。');
+  }
+}
+function initStudio(win) {
+  const sc = win.document.createElement('script');
+  sc.textContent = DRIVER;
+  win.document.head.appendChild(sc);
+  let driverTries = 0;
+  const poll2 = setInterval(() => {
+    try {
+      driverTries++;
+      if (!win.__cw) {
+        if (driverTries === 40) { clearInterval(poll2); showBootError('驱动注入失败（场景接口不可用）。请刷新重试。'); }
+        return;
+      }
+      clearInterval(poll2);
+      api = win.__cw;
+      const sp = api.spawn();
+      Object.assign(fly, sp);
+      worldT = api.getWorldTime(); lastTW = worldT;
+      const st = api.getStage();
+      tod = st.tod; rain = st.rain;
+      els.vFov.textContent = Math.round(fly.fov) + '°';
+      els.rFov.value = Math.round(fly.fov);
+      syncSliders(); syncTransport();
+      els.rWt.value = worldT; els.vWt.textContent = worldT.toFixed(2) + 's';
+      els.vPhase.textContent = phaseName(worldT);
+      if (!loadProject()) { segs = [newSeg()]; sel = 0; }
+      else {
+        let fixed = 0;
+        for (const sg of segs) {
+          try { if (normalizeEnv(sg)) fixed++; } catch (e) { console.warn(e); }
+        }
+        if (fixed) saveProject();
+      }
+      renderSegList();
+      mode = 'live';
+      worldRunning = false;                 // 叙事时钟默认停：只有开始录制才走
+      els.wtRun.textContent = '▶';
+      syncTransport();
+      api.setPose(fly.x, fly.y, fly.z, fly.yaw, fly.pitch, fly.fov);
+      refreshEnvUI(); rebuildTlEvents();
+      hideBootError();
+      els.lockHint.style.display = 'block';
+      setTimeout(() => els.lockHint.style.display = 'none', 6000);
+      toast('场景已接管 — 叙事时钟默认暂停；点画面飞行，空格开始记录', 3800);
+      pump();
+      // 手动步进钩子：无头/遮挡环境下逐帧驱动（film 管线同款思路）
+      window.__studioKick = dt => { if (api) loopBody(Math.min(0.05, dt || 1 / 60)); };
+    } catch (e) {
+      clearInterval(poll2);
+      console.error(e);
+      showBootError('初始化失败：' + ((e && e.message) || e) + ' — 请点重新加载重试。');
+    }
+  }, 120);
+}
+try { bindTimelineBar(); } catch (e) { console.error('时间轴初始化失败', e); }
+function updateTransportHeight() {
+  if (!els.transport) return;
+  const th = els.transport.offsetHeight;
+  if (updateTransportHeight._th !== th) {
+    updateTransportHeight._th = th;
+    document.documentElement.style.setProperty('--th', th + 'px');
+  }
+}
+try {
+  updateTransportHeight();
+  window.addEventListener('resize', updateTransportHeight);
+  if (window.ResizeObserver && els.transport) {
+    new ResizeObserver(updateTransportHeight).observe(els.transport);
+  }
+} catch (e) { console.error('走带高度同步失败', e); }
+</script>
+</body>
+</html>

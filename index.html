@@ -1,0 +1,270 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>CRANEWICK · 全场景初稿</title>
+<style>
+  html,body{margin:0;height:100%;background:#10141a}
+  canvas{display:block}
+  #boot{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;
+    z-index:99;overflow:hidden;background:#0b0f14;transition:opacity .5s}
+  #boot::before{content:"";position:absolute;inset:-3%;background:url("./docs/shots/cranewick_main.png") center/cover no-repeat;
+    filter:blur(3px) saturate(.9) brightness(.64);transform:scale(1.045)}
+  #boot::after{content:"";position:absolute;inset:0;
+    background:radial-gradient(900px 540px at 50% 42%,rgba(8,12,16,.06),rgba(8,11,15,.74) 72%),
+      linear-gradient(180deg,rgba(8,12,16,.22),rgba(7,10,14,.9))}
+  #boot.gone{opacity:0;pointer-events:none}
+  #boot .boot-card{position:relative;z-index:1;width:min(560px,86vw);padding:26px 30px 24px;
+    border:1px solid rgba(217,178,106,.34);border-radius:15px;background:rgba(12,17,23,.76);
+    box-shadow:0 24px 80px rgba(0,0,0,.5);backdrop-filter:blur(14px);text-align:center;
+    color:#D9B26A;font:13px/1.7 "SF Mono",Menlo,Consolas,monospace;letter-spacing:.02em}
+  #boot .b-brand{font-size:19px;letter-spacing:.12em;color:#F0D29B}
+  #boot .b-brand span{color:#7c8a7a;font-size:13px}
+  #boot .b-status{color:#D8D0C0;font-size:13px;min-height:22px;margin:11px 0 13px}
+  #boot .b-track{width:100%;height:4px;background:rgba(255,255,255,.1);border-radius:3px;overflow:hidden}
+  #boot .b-track i{display:block;height:100%;width:34%;border-radius:3px;
+    background:linear-gradient(90deg,#b8774a,#D9B26A,#F0D29B);
+    box-shadow:0 0 14px rgba(217,178,106,.45);animation:bootsweep 1.35s ease-in-out infinite}
+  @keyframes bootsweep{0%{margin-left:-36%}100%{margin-left:104%}}
+  #boot .b-meta{display:flex;justify-content:space-between;gap:12px;margin-top:8px;
+    font-size:10.5px;letter-spacing:.05em;color:#9d978a}
+  #boot .b-tip{margin-top:13px;color:#8f9186;font-size:11px;line-height:1.7}
+  #boot .b-retry{margin-top:13px;appearance:none;border:1px solid rgba(217,178,106,.55);
+    background:rgba(217,178,106,.14);color:#ffe3b5;border-radius:8px;padding:8px 22px;
+    font:12px/1.4 inherit;cursor:pointer}
+  #boot .b-retry:hover{background:rgba(217,178,106,.24)}
+  #err{position:fixed;inset:0;display:none;padding:40px;color:#E2913C;
+    font:12px/1.7 "SF Mono",Menlo,monospace;white-space:pre-wrap;overflow:auto;z-index:100}
+  #panel{position:fixed;left:14px;bottom:74px;width:330px;background:rgba(18,22,29,.9);
+    border:1px solid rgba(217,178,106,.28);border-radius:8px;padding:10px 12px;z-index:6;
+    font:11.5px/1.5 "SF Mono",Menlo,Consolas,"PingFang SC",monospace;color:#E8E4DC}
+  #panel h3{margin:0 0 6px;font-size:10.5px;letter-spacing:.12em;text-transform:uppercase;
+    color:#D9B26A;font-weight:600}#panel h3:not(:first-child){margin-top:9px}
+  #panel .btns{display:flex;gap:6px;margin-top:5px;flex-wrap:wrap}
+  #panel button{flex:1 1 auto;min-width:58px;padding:4px 6px;font:inherit;font-size:10.5px;cursor:pointer;
+    background:rgba(217,178,106,.07);color:#E8E4DC;border:1px solid rgba(217,178,106,.28);border-radius:5px}
+  #panel button:hover{background:rgba(217,178,106,.18)}
+  #panel button.on{background:#D9B26A;color:#14181e;border-color:#D9B26A;font-weight:600}
+  #state{position:fixed;left:14px;bottom:288px;width:330px;background:rgba(18,22,29,.9);
+    border:1px solid rgba(217,178,106,.22);border-radius:8px;padding:8px 12px;z-index:6;
+    font:10.5px/1.6 "SF Mono",Menlo,monospace;color:#9AA3AD}
+  #state b{color:#D9B26A;font-weight:600}
+  #state .g{display:grid;grid-template-columns:1fr 1fr;gap:0 10px}
+</style>
+<script type="importmap">
+{"imports":{"three":"../vendor/three.module.js","three/addons/":"../vendor/jsm/"}}
+</script>
+</head>
+<body>
+<div id="boot">
+  <div class="boot-card">
+    <div class="b-brand">CRANEWICK <span>/ STEAM EPOCH</span></div>
+    <div class="b-status" id="boot-status">正在装配 CRANEWICK 全场景…</div>
+    <div class="b-track"><i></i></div>
+    <div class="b-meta"><span>运河 / 开启桥 / 飞艇 / 街道 / 车辆 / 行人</span><span id="boot-elapsed">0.0 s</span></div>
+    <div class="b-tip">首次装配约 3–10 秒；场景较重建模（4,000+ draw calls）。<br>
+      若长时间停住，请确认本地服务仍在运行。</div>
+    <button class="b-retry" id="boot-retry" hidden>重新加载</button>
+  </div>
+</div>
+<pre id="err"></pre>
+
+<script>
+(() => {
+  // 静态 import 失败时模块内的错误处理根本不会执行；这个非模块看门狗负责兜底。
+  const el = document.getElementById('boot-elapsed');
+  const boot = document.getElementById('boot');
+  const retry = document.getElementById('boot-retry');
+  const status = document.getElementById('boot-status');
+  const t0 = performance.now();
+  const timer = setInterval(() => {
+    if (!document.getElementById('boot')) { clearInterval(timer); return; }
+    if (el) el.textContent = ((performance.now() - t0) / 1000).toFixed(1) + ' s';
+  }, 100);
+  retry.addEventListener('click', () => location.reload());
+  const slow = setTimeout(() => {
+    if (boot.classList.contains('gone')) return;
+    retry.hidden = false;
+    status.textContent = '装配仍在继续，或本地服务已断开 — 可重试';
+  }, 30000);
+  window.addEventListener('error', (e) => {
+    if (!boot.isConnected || boot.classList.contains('gone')) return;
+    retry.hidden = false;
+    status.textContent = '装配失败：' + (e.message || '模块加载错误');
+  });
+  window.addEventListener('unhandledrejection', (e) => {
+    if (!boot.isConnected || boot.classList.contains('gone')) return;
+    retry.hidden = false;
+    status.textContent = '装配失败：' + (e.reason?.message || e.reason || '未知错误');
+  });
+})();
+</script>
+
+<script type="module">
+import * as THREE from 'three';
+import { createViewer } from '../src/core/viewer.js?v=20260917115828';
+import { createScene, TIMELINE } from '../src/scene/assemble.js?v=20260917115828';
+import * as Bridge from '../src/assets/bridge.js?v=20260917115828';
+import * as Airship from '../src/assets/airship.js?v=20260917115828';
+import * as Street from '../src/assets/street.js?v=20260917115828';
+
+import * as Canal from '../src/assets/canal.js?v=20260917115828';
+
+// 防御式取值：面板字段若与 snapshot() 漂移，只降级显示 '—'，绝不让 tick 抛错（
+// 本轮就是 s.draft / s.airshipAltitude / s.railRetract 三个不存在字段导致拖时间轴即报错）
+const fNum = (v, n) => (typeof v === 'number' && Number.isFinite(v)) ? v.toFixed(n) : '—';
+
+const showErr = (m) => { const el = document.getElementById('err'); el.style.display = 'block'; el.textContent += m + '\n\n'; };
+window.addEventListener('error', (e) => showErr(`${e.message}\n  ${e.filename}:${e.lineno}`));
+window.addEventListener('unhandledrejection', (e) => showErr('Promise: ' + (e.reason?.stack || e.reason)));
+
+let scene = null;
+const T = TIMELINE;
+
+/**
+ * 视角预设。
+ * v9.6 关键改动：默认机位改成**沿运河轴线看**（原先在岸边看运河 ——
+ * 视线必然穿过近岸那一排临街楼，主视角被自家房子挡死）。
+ * 沿轴线看还有个额外好处：飞艇现在是**自远方朝镜头驶来**的，正好迎面入画。
+ */
+const VIEWS = {
+  全景建立: { pos: [-1.5, 20, -104], tgt: [0, 5, 8] },
+  桥与航道: { pos: [26, 9, -34], tgt: [0, 2.6, -8] },
+  桥面近景: { pos: [11, 5.2, -14], tgt: [0, 2.8, 0] },
+  主路通桥: { pos: [58, 6.4, 4.5], tgt: [0, 3.2, 0, ] },   // 中间那条路一路延伸到桥上
+  街道: { pos: [34, 4.6, 5.2], tgt: [-14, 3.0, 0.6] },
+  河道边: { pos: [12.5, 4.2, -20], tgt: [10, 2.4, -4] },
+  俯视全局: { pos: [8, 120, -74], tgt: [0, 2, -4] },
+  三道运河环: { pos: [-150, 300, -430], tgt: [0, 4, 0] },   // 俯瞰同心运河环
+  桥头俯视: { pos: [2, 96, 30], tgt: [0, 0, 0] },            // 桥头正上方俯视（查道路/步道是否被压）
+  桥头步道: { pos: [11.8, 4.6, -24], tgt: [11.8, 2.9, 6] },      // 沿东岸河堤步道看向桥头（看步道是否连续）
+  次级广场: { pos: [4, 30, 104], tgt: [-44, 5, 100] },        // 自运河上望向西岸 Burg（中间无遮挡）
+};
+
+const viewer = createViewer({
+  title: 'CRANEWICK · 全场景初稿',
+  subtitle: '飞艇自远方驶来 → 滑翔降落 → 桨轮滑行穿过开启桥 → 桥回落复原 · 统一时间线 68 s',
+  specs: [
+    ['基准锚点', '蒸汽机动车 5.6 m（v8 原版，有轮）'],
+    ['飞艇（世界）', '18 m · 实例缩放 1:4.78（= 桥净跨）'],
+    ['街道', '双车道 6.6 + 人行 2.2×2 = 11.0 m'],
+    ['运河', '宽 18 · 深 3 · 堤顶 +2.2'],
+    ['开启桥', '净跨 18 · 桥面 9.36 · 开 70°/12.5 s'],
+    ['车辆 / 行人', '机动车 5.6 / 马车 4.2 / 公共马车 5.4 m · 行人 1.75 m'],
+    ['演出时长', '68 s（飞艇自远方来 → 封道开桥 → 滑翔降落 → 滑行穿桥 → 桥复原）'],
+  ],
+  checklist: [
+    '比例：飞艇 18 m ＝ 开启桥净跨；基准锚点 = 蒸汽机动车 5.6 m',
+    '风格：暖调 + 黄铜高光；无哥特尖拱/尖塔/实心石墙',
+    '桥：通车路桥（车行道 + 人行道 + 栏杆），起桥动力外露',
+    '运河：石砌堤墙 + 下水道出水口拱 + 入水石阶 + 系船柱',
+    '街道：窄街 + 石板路 + 窗户有对比（暗玻璃 + 亮黄铜棂）+ 岗亭只一个',
+    '墙面：多色砖贴图交杂，不是单一色块',
+    '车辆与行人（v8 原版有轮车：机动车 / 马车 / 公共马车）',
+    '衔接：街道 / 运河 / 桥三者有无悬空或穿插',
+    '时间线：封道 → 起桥 → 通航 → 降落 是否读得通',
+  ],
+  labels: ['飞艇自远方来', '预告·落杆', '清空桥面', '解锁', '开桥 70°', '飞艇滑翔下降', '触水', '滑行穿桥', '桥回落·复原'],
+  options: { pedestal: false, human: false, outline: false, shadows: true, stageOpts: { sunElevation: 22, sunAzimuth: 212 } },
+  // 机位放在**运河正上方**：视线沿运河走，两岸河堤/步道/主路必然全部露出（放在岸上必被那一排临街楼挡）
+camera: { pos: [-1.5, 20, -104], target: [0, 5, 8], fov: 44, shadowCamera: 150, shadowMapSize: 4096 },
+
+  build(ctx) {
+    const { stage } = ctx;
+    const bootStatus = document.getElementById('boot-status');
+    const say = (s) => { if (bootStatus) { bootStatus.textContent = s; void bootStatus.offsetHeight; } };
+    say('正在装配：运河与河堤 …');
+    stage.scene.fog.density = 0.0012;   // 远景必须看得见：0.0085 在 100 m 处就洗掉一半（用户：体积雾影响远景观感）
+    // 各资产在本文件里只 build 一次（重复 build 会让 draw call 成倍增长）
+    say('正在装配：开启桥（外露板梁 + 机械桁架）…');
+    const bridge = Bridge.build({ outline: true });
+    say('正在装配：飞艇（1:11.2 实例缩放）…');
+    const airship = Airship.build({ outline: true });
+    const street = Street.build({ outline: false });  // 同上
+    say('正在装配：车辆与行人（v8 原版车轮车）…');
+    const canal = Canal.build({ outline: false });   // 背景体量：免描边（省几何与 draw call）
+    street.userData.parts.setNight(true);
+    canal.userData.parts.setNight(true);
+    say('正在合成全场景与水面 …');
+    scene = createScene({ bridge, airship, street, canal });
+    scene.root.userData.parts = { snapshot: () => scene.snapshot() };
+    return scene.root;
+  },
+
+  animation: {
+    duration: T.dur,
+    labels: ['飞艇自远方来', '预告·落杆', '清空桥面', '解锁', '开桥 70°', '飞艇滑翔下降', '触水', '滑行穿桥', '桥回落·复原'],
+    tick(t) {
+      scene.drive(t);
+      const s = scene.snapshot();
+      const el = document.getElementById('state');
+      if (el) {
+        el.innerHTML = `<div class="g">
+          <span>桥叶 <b>${fNum(s.leafDeg, 1)}°</b></span><span>配重 <b>${fNum(s.cwT * 100, 0)}%</b></span>
+          <span>栏杆 <b>${s.gateT < 0.02 ? '抬起' : s.gateT > 0.98 ? '落定' : '下落中'}</b></span>
+          <span>指示灯 <b>${s.signal ?? '—'}</b></span><span>吃水 <b>${fNum(s.draftWorld, 2)} m</b></span>
+          <span>艇高 <b>${fNum(s.airshipAltitudeWorld, 1)} m</b></span><span>俯仰 <b>${fNum(s.pitch, 2)}°</b></span>
+          <span>桨轮 <b>${fNum(s.paddleDeploy * 100, 0)}%</b></span><span>桅帆收 <b>${fNum(s.sailStow * 100, 0)}%</b></span>
+          <span>艇长 <b>${fNum(s.airshipWorldLen, 1)} m</b></span>
+        </div>`;
+      }
+    },
+  },
+});
+window.__viewer = viewer;
+window.__scene = () => scene.snapshot();
+window.__sceneObj = scene;   // 调试用：直接拿 scene（交通/水体等内部状态）
+
+// 视角 + 时间线预设
+(function panel() {
+  const el = document.createElement('div');
+  el.id = 'panel';
+  el.innerHTML = `
+    <h3>视角</h3>
+    <div class="btns" id="vs">${Object.keys(VIEWS).map((n) => `<button data-v="${n}">${n}</button>`).join('')}</div>
+    <h3>跳到关键相位</h3>
+    <div class="btns" id="jump">
+      <button data-t="0">起飞点</button>
+      <button data-t="8">落杆</button>
+      <button data-t="21">净空确认</button>
+      <button data-t="35">开桥中</button>
+      <button data-t="40">滑翔下降</button>
+      <button data-t="48">触水</button>
+      <button data-t="53">穿桥中</button>
+      <button data-t="66">桥复原</button>
+    </div>
+    <div class="btns" id="timeline">
+      <button data-a="auto" class="on">随轴播放</button>
+    </div>`;
+  document.body.appendChild(el);
+  const stEl = document.createElement('div');
+  stEl.id = 'state';
+  document.body.appendChild(stEl);
+
+  el.querySelectorAll('#vs button').forEach((b) => {
+    b.onclick = () => {
+      const v = VIEWS[b.dataset.v];
+      viewer.stage.camera.position.fromArray(v.pos);
+      viewer.stage.controls.target.fromArray(v.tgt);
+      viewer.stage.controls.update();
+    };
+  });
+  el.querySelectorAll('#jump button').forEach((b) => {
+    b.onclick = () => {
+      const t = parseFloat(b.dataset.t);
+      const s = document.getElementById('scrub');
+      if (!s) return;
+      // 分步推进到目标时刻，保证物理积分是逐帧走过来的（不是瞬移）
+      const from = parseFloat(s.value);
+      if (t <= from) { scene.reset(); s.value = t; s.dispatchEvent(new Event('input')); return; }
+      for (let x = from; x < t; x += 0.05) { s.value = Math.min(x + 0.05, t); s.dispatchEvent(new Event('input')); }
+    };
+  });
+})();
+
+document.getElementById('boot').classList.add('gone');
+setTimeout(() => document.getElementById('boot')?.remove(), 800);
+</script>
+</body>
+</html>

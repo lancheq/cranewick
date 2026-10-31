@@ -1,0 +1,126 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>CRANEWICK · ⑤ 运河与河堤</title>
+<style>
+  html,body{margin:0;height:100%;background:#10141a}
+  canvas{display:block}
+  #boot{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;
+    color:#D9B26A;font:13px/1.7 "SF Mono",Menlo,monospace;letter-spacing:.1em;z-index:99;
+    background:#10141a;transition:opacity .4s}#boot.gone{opacity:0;pointer-events:none}
+  #err{position:fixed;inset:0;display:none;padding:40px;color:#E2913C;
+    font:12px/1.7 "SF Mono",Menlo,monospace;white-space:pre-wrap;overflow:auto;z-index:100}
+  #panel{position:fixed;left:14px;bottom:74px;width:318px;background:rgba(18,22,29,.9);
+    border:1px solid rgba(217,178,106,.28);border-radius:8px;padding:10px 12px;z-index:6;
+    font:11.5px/1.5 "SF Mono",Menlo,Consolas,"PingFang SC",monospace;color:#E8E4DC}
+  #panel h3{margin:0 0 6px;font-size:10.5px;letter-spacing:.12em;text-transform:uppercase;
+    color:#D9B26A;font-weight:600}#panel h3:not(:first-child){margin-top:9px}
+  #panel .btns{display:flex;gap:6px;margin-top:5px;flex-wrap:wrap}
+  #panel button{flex:1 1 auto;min-width:54px;padding:4px 6px;font:inherit;font-size:10.5px;cursor:pointer;
+    background:rgba(217,178,106,.07);color:#E8E4DC;border:1px solid rgba(217,178,106,.28);border-radius:5px}
+  #panel button:hover{background:rgba(217,178,106,.18)}
+  #panel button.on{background:#D9B26A;color:#14181e;border-color:#D9B26A;font-weight:600}
+</style>
+<script type="importmap">
+{"imports":{"three":"../vendor/three.module.js","three/addons/":"../vendor/jsm/"}}
+</script>
+</head>
+<body>
+<div id="boot">正在装配运河与河堤 …</div>
+<pre id="err"></pre>
+
+<script type="module">
+import * as THREE from 'three';
+import { createViewer } from '../src/core/viewer.js?v=20260916125919';
+import { createWater } from '../src/scene/water.js?v=20260916125919';
+import * as Canal from '../src/assets/canal.js?v=20260916125919';
+
+const showErr = (m) => { const el = document.getElementById('err'); el.style.display='block'; el.textContent += m + '\n\n'; };
+window.addEventListener('error', (e) => showErr(`${e.message}\n  ${e.filename}:${e.lineno}`));
+window.addEventListener('unhandledrejection', (e) => showErr('Promise: ' + (e.reason?.stack || e.reason)));
+
+const SP = Canal.SPEC;
+let water, canal;
+
+const VIEWS = {
+  运河全景: { pos: [26, 9, -34], tgt: [0, 1.6, -6] },
+  水面视角: { pos: [0, 1.1, -22], tgt: [0, 1.6, 6] },
+  出水口拱: { pos: [6.5, 1.6, 6], tgt: [10.0, 1.4, 12] },
+  入水石阶: { pos: [4.5, 2.6, -20], tgt: [9.2, 0.6, -12] },
+  跨巷小桥: { pos: [7, 2.6, -34], tgt: [0, 2.4, -26] },
+  系船柱: { pos: [7.4, 3.0, -12], tgt: [8.4, 2.4, -16] },
+  俯视: { pos: [8, 40, -28], tgt: [0, 1, -8] },
+};
+
+const viewer = createViewer({
+  title: '⑤ 运河与河堤',
+  subtitle: '威尼斯口径 · 宽 18 / 深 3 · 石砌堤墙 + 下水道出水口拱 + 入水石阶 + 跨巷小桥',
+  specs: [
+    ['运河宽 / 水深', `${SP.width} m / ${SP.depth} m`],
+    ['堤顶标高', `+${SP.quayY} m（石砌压顶）`],
+    ['堤墙厚 / 步道宽', `${SP.wallT} m / ${SP.walk} m`],
+    ['沿河长度', `${SP.len} m`],
+    ['下水道出水口拱', `宽 ${SP.outfallW} m · 4 处`],
+    ['入水石阶', `宽 ${SP.stepW} m · 2 处`],
+    ['系船柱间距', `${SP.bollardStep} m`],
+    ['跨巷人行小桥', '2 座（无台阶、石拱 + 黄铜栏杆）'],
+    ['尺度参照', '悬浮车 4.5 m / 行人 1.75 m'],
+  ],
+  checklist: [
+    '运河是否"窄而深"（宽 18 / 深 3），而不是开阔大河',
+    '河堤是否为**石质**：大块方石贴图 + 压顶 + 挑口滴水线',
+    '**下水道出水口拱**是否成立（拱券 + 楔形拱石 + 深腔 + 铁格栅 + 出水痕迹贴洞口根部）',
+    '入水石阶的扶手立柱是否落在台阶上（不是悬空）',
+    '系船柱 / 墙面铁环 / 沿河铜管是否成组',
+    '跨巷小桥是否为无台阶石拱 + 黄铜栏杆',
+    '墙基是否有水线污痕与苔藓带（威尼斯感）',
+  ],
+  options: { pedestal: false, human: false, outline: false, shadows: true, stageOpts: { sunElevation: 30, sunAzimuth: 146 } },
+  camera: { pos: [26, 9, -34], target: [0, 1.6, -6], fov: 46, shadowCamera: 70, shadowMapSize: 4096 },
+
+  build(ctx) {
+    const { stage } = ctx;
+    stage.scene.fog.density = 0.006;
+    water = createWater({ rings: 90, sectors: 120, rMin: 0.4, rMax: 700, followCamera: false });
+    stage.scene.add(water.mesh);
+    canal = Canal.build({ outline: true });
+    return canal;
+  },
+
+  animation: {
+    duration: 20,
+    labels: ['水面常态', '煤气灯亮着'],
+    tick(t) { water.update(t); },
+  },
+});
+window.__viewer = viewer;
+
+(function panel() {
+  const el = document.createElement('div');
+  el.id = 'panel';
+  el.innerHTML = `<h3>视角</h3>
+    <div class="btns">${Object.keys(VIEWS).map((n) => `<button data-v="${n}">${n}</button>`).join('')}</div>
+    <h3>提示</h3>
+    <div style="color:#8C95A0;font-size:10.5px;line-height:1.6">
+      运河在<b style="color:#D9B26A">全场景</b>里位于最中央，桥横跨其上。<br>
+      本页只用于单独拍板运河本体，不含桥与街道。
+    </div>`;
+  document.body.appendChild(el);
+  el.querySelectorAll('button').forEach((b) => {
+    b.onclick = () => {
+      const v = VIEWS[b.dataset.v];
+      viewer.stage.camera.position.fromArray(v.pos);
+      viewer.stage.controls.target.fromArray(v.tgt);
+      viewer.stage.controls.update();
+      el.querySelectorAll('button').forEach((x) => x.classList.toggle('on', x === b));
+    };
+  });
+})();
+
+document.getElementById('boot').classList.add('gone');
+setTimeout(() => document.getElementById('boot')?.remove(), 700);
+</script>
+</body>
+</html>

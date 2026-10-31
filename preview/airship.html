@@ -1,0 +1,456 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>CRANEWICK · 单体 ① 飞艇 HMS PENDRAGON</title>
+<style>
+  html,body{margin:0;height:100%;background:#10141a}
+  canvas{display:block}
+  #boot{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;
+    color:#D9B26A;font:13px/1.6 "SF Mono",Menlo,monospace;letter-spacing:.1em;z-index:99;
+    background:#10141a;transition:opacity .4s}
+  #boot.gone{opacity:0;pointer-events:none}
+  #err{position:fixed;inset:0;display:none;padding:40px;color:#E2913C;
+    font:12px/1.7 "SF Mono",Menlo,monospace;white-space:pre-wrap;overflow:auto;z-index:100}
+  #paddle{position:fixed;left:14px;bottom:74px;width:300px;background:rgba(18,22,29,.9);
+    border:1px solid rgba(217,178,106,.28);border-radius:8px;padding:10px 12px;z-index:6;
+    font:11.5px/1.5 "SF Mono",Menlo,Consolas,"PingFang SC",monospace;color:#E8E4DC}
+  #paddle h3{margin:0 0 6px;font-size:10.5px;letter-spacing:.12em;text-transform:uppercase;
+    color:#D9B26A;font-weight:600}
+  #paddle .r{display:flex;align-items:center;gap:8px}
+  #paddle input[type=range]{flex:1;accent-color:#D9B26A}
+  #paddle .lb{color:#9AA3AD;font-size:10.5px;width:30px}#paddle .st{color:#9AA3AD;font-size:10.5px;min-width:64px;text-align:right}
+  #paddle .btns{display:flex;gap:6px;margin-top:6px}
+  #paddle button{flex:1;padding:4px 6px;font:inherit;font-size:10.5px;cursor:pointer;
+    background:rgba(217,178,106,.07);color:#E8E4DC;border:1px solid rgba(217,178,106,.28);border-radius:5px}
+  #paddle button:hover{background:rgba(217,178,106,.18)}
+</style>
+<script type="importmap">
+{
+  "imports": {
+    "three": "../vendor/three.module.js",
+    "three/addons/": "../vendor/jsm/"
+  }
+}
+</script>
+</head>
+<body>
+<div id="boot">正在装配 HMS PENDRAGON …</div>
+<pre id="err"></pre>
+
+<script type="module">
+import * as THREE from 'three';
+import { createViewer } from '../src/core/viewer.js?v=20260915145253';
+import { M } from '../src/core/materials.js?v=20260915145253';
+import * as Airship from '../src/assets/airship.js?v=20260915145253';
+import { createWater, createBuoyancy, createBowSplash, createPitchResponse, createSpringResponse, createBubbleTrail } from '../src/scene/water.js?v=20260915145253';
+
+const showErr = (msg) => {
+  const el = document.getElementById('err');
+  el.style.display = 'block';
+  el.textContent += msg + '\n\n';
+};
+window.addEventListener('error', (e) => showErr(`${e.message}\n  ${e.filename}:${e.lineno}`));
+window.addEventListener('unhandledrejection', (e) => showErr('Promise: ' + (e.reason?.stack || e.reason)));
+
+// ---------------------------------------------------------------------------
+// 物理常量（与 ART_BIBLE 7.x / SHOT_SCRIPT 相位 8–11 一致）
+// ---------------------------------------------------------------------------
+const SPEC = Airship.SPEC;
+const FLOAT_Y = Airship.FLOAT_Y;                    // 22.5 m
+const DRAFT = SPEC.draft;                            // 2.8 m
+const V0 = 8.0;                                      // 下降初速 m/s
+const V1 = 1.2;                                      // 触水速度 m/s
+const T_DESC = 3.5;                                  // 减速耗时 s
+const A_DEC = (V0 - V1) / T_DESC;
+/** 下降总行程 = 匀减速积分 + 吃水（触水时龙骨刚好压到水面，速度恰好为 V1） */
+const DROP = ((V0 + V1) / 2) * T_DESC + DRAFT;       // 18.9 m
+const T_HOVER = 2.6;                                 // 悬停结束
+const T_TOUCH = T_HOVER + T_DESC;                    // 6.1 s
+const DUR = 14.0;
+
+// 俯仰关键帧（度，正 = 抬头）：smoothstep 之间插值 ⇒ 姿态连续，绝不跳变
+const PITCH_KEYS = [
+  [0.0, 1.5],        // 悬停：浮空体态略抬头
+  [T_HOVER, 1.5],
+  [T_HOVER + 0.8, -2.6],   // 下降段：轻低头（被下压气流按着走）
+  [T_HOVER + 2.4, -2.2],
+  [T_HOVER + 3.0, 4.4],    // flare：拉平抬头（水上飞机式进场）
+  [T_TOUCH, 2.4],          // 触水瞬间仍带抬头，随后交给弹簧
+];
+function profileAt(keys, t) {
+  if (t <= keys[0][0]) return keys[0][1];
+  for (let i = 0; i < keys.length - 1; i++) {
+    const [t0, v0] = keys[i], [t1, v1] = keys[i + 1];
+    if (t >= t0 && t <= t1) {
+      const u = (t - t0) / (t1 - t0);
+      return v0 + (v1 - v0) * (u * u * (3 - 2 * u));
+    }
+  }
+  return keys[keys.length - 1][1];
+}
+/** 方向舵：下降段做主动航向修正（衰减振荡 + 持续微调），落水后仅剩微调 */
+function rudderAt(t) {
+  if (t < T_HOVER) return Math.sin(t * 0.7) * 2.5;
+  const s = (t - T_HOVER) / T_DESC;
+  if (t < T_TOUCH) {
+    return -16 * Math.exp(-1.7 * s) * Math.cos(2.6 * s) + 1.6 * Math.sin(t * 2.3);
+  }
+  return Math.sin(t * 1.1) * 1.4 * Math.exp(-(t - T_TOUCH) * 0.5);
+}
+const smoothstep = (u) => { const x = Math.min(1, Math.max(0, u)); return x * x * (3 - 2 * x); };
+/** 触水瞬间的升降舵角（保证与下降段的末值连续，不跳变） */
+const ELEV_TOUCH = -6 - 2.4 * 0.8 + Math.sin(T_TOUCH * 2.6) * 1.2;
+
+/**
+ * 桅帆收起：入水同步
+ * 提前 1.4 s 开始（船要先"落帆"再触水），触水后 2.2 s 收完折桅。
+ * 单参数内部拆两段（先收帆、后折桅），见 airship.setSailStow。
+ */
+function sailStowAt(t) {
+  if (t <= T_TOUCH - 1.4) return 0;
+  if (t >= T_TOUCH + 2.2) return 1;
+  return smoothstep((t - (T_TOUCH - 1.4)) / 3.6);
+}
+
+let water, buoy, splash, bubbles, pitchSpring, rollSpring;
+let prevT = -1;
+let paddleOverride = null;
+let sailOverride = null;
+/** 波面跟随时常数（s）：越大越平滑 */
+const WAVE_TAU = 1.2;
+/** 波面跟随系数：86 m 长的艇不会跟着 3–14 m 的波起伏，波浪从它下面穿过 ⇒ 强衰减 */
+const WAVE_FOLLOW = 0.12;
+/**
+ * 姿态平滑时常数（s）。
+ * 触水瞬间水对船首的冲击是脉冲式的 ⇒ 俯仰角速度会从 0 突变到 −11 °/s，
+ * 位移连续但**速度不连续**，观感就是"位置变化生硬"。
+ * 用一阶指数滤波把最终位姿过一遍：保证输出姿态 C1 连续，
+ * 且延迟只有 tau×v ≈ 0.05 s × 1.2 m/s = 6 cm（不可见）。
+ */
+const POSE_TAU = 0.05;
+let waveSmooth = 0;
+const st = { landed: false, deploy: 0, touchSpeed: 0, h: 0, hPrev: 0, hVel: 0, sm: { h: 0, pitch: 0, roll: 0, init: false } };
+
+const viewer = createViewer({
+  title: '① 飞艇 · HMS PENDRAGON',
+  subtitle: '全长 86 m / 气囊 ⌀24 m / 降落演示（flare 进场 + 船首下沉回正 + 侧桨轮展开）',
+  specs: [
+    ['全长', '86 m'],
+    ['气囊长 × 径', '62 × ⌀24 m'],
+    ['环肋', '12 道 · 间距 5.64 m'],
+    ['吊舱', '30 × 8 × 10.2 m'],
+    ['浮筒 ×2', '24 × ⌀4.0 m · 偏置 ±3.9'],
+    ['侧桨轮 ×2', '⌀5.2 m · 可折叠展开'],
+    ['螺旋桨', '4 具 · ⌀8.4 m · 三叶变距'],
+    ['侧桅帆 ×4', '桅长 10.8–13 m · 可收帆折桅'],
+    ['尾鳍', '十字 · 展长 12 m'],
+    ['总质量', '430 t'],
+    ['水线面积', '150 m²'],
+    ['设计吃水', '2.8 m（自洽校验 2.80）'],
+    ['浮沉周期', '3.59 s · ζ = 0.22'],
+    ['比例参照', '行人 1.75 m / 街灯 4.5 m'],
+  ],
+  checklist: [
+    '螺旋桨尺寸与形态（⌀8.4 m，桨叶沿径向、分段扭曲）',
+    '气囊顶部阀门/管箍是否贴死（不再悬浮）',
+    '浮筒站距（±3.9 m）是否读得出稳定感',
+    '下降段方向舵是否在主动修正航向',
+    '俯仰：下降低头 → flare 抬头 → 船首下沉 → 回正 是否连贯',
+    '落水后艇身是否回到水平（弹簧回正）',
+    '水花：位置/方向是否对，是否随下沉持续激起',
+    '桅帆：收帆 → 折桅 的两段式收起是否顺畅、是否与入水同步',
+    '不对称：右舷探照灯 / 左舷排烟道+气缸组 是否读得出真在干活',
+  ],
+  options: { pedestal: false, human: false, outline: false, shadows: true },
+  camera: { pos: [104, 62, 116], target: [0, FLOAT_Y + 2, 0], fov: 42, shadowCamera: 130 },
+
+  build(ctx) {
+    const { stage, extras } = ctx;
+
+    water = createWater({ rings: 110, sectors: 180, rMin: 0.6, rMax: 1600 });
+    stage.scene.add(water.mesh);
+    stage.scene.fog.density = 0.0030;
+
+    buoy = createBuoyancy({ mass: SPEC.mass, waterplaneArea: SPEC.waterplaneArea, zeta: 0.22 });
+    buoy.reset();
+
+    // 触水俯仰弹簧：flare 抬头进场(+2.4°) → 水冲击(v0=−11°/s)把船首压下去 → 回正到水平
+    // v0 由峰值反推：目标最低点约 −4°，峰值出现在触水后 ~1.0 s（与水花主相位重合）
+    pitchSpring = createPitchResponse({ theta0: 2.4, v0: -11, omega: 1.75, zeta: 0.22, delay: 0 });
+    // 横滚弹簧：落水后同样要回正（不能永远歪着）
+    rollSpring = createSpringResponse({ theta0: 0.9, v0: -3.2, omega: 1.75, zeta: 0.26, delay: 0 });
+
+    // 溅射组：局部 +X = 船首，与飞艇同向，无需额外偏航
+    splash = createBowSplash();
+    stage.scene.add(splash.group);
+
+    bubbles = createBubbleTrail({ count: 260, spread: 9 });
+    stage.scene.add(bubbles.points);
+
+    extras.add(buildScaleBar(20, [0, 0, 46]));
+
+    return Airship.build({ outline: true });
+  },
+
+  animation: {
+    duration: DUR,
+    labels: ['悬停', '减速下降 8→1.2 m/s（低头）', 'flare 抬头', '触水 · 船首下沉', '弹簧回正 + 桨轮展开', '稳定'],
+    tick(t, { stage, asset }) {
+      // ---- 0) 时间基准 ----
+      const t0 = prevT < 0 ? t : prevT;
+      const frameDt = Math.min(Math.max(t - t0, 0), 0.25);
+      prevT = t;
+      water.update(t, stage.camera);
+
+      // ---- 1) 触水判定 ----
+      const landed = t >= T_TOUCH;
+      if (landed && !st.landed) {
+        st.landed = true;
+        buoy.impact(V1);
+        splash.trigger({ scale: 1 });
+        pitchSpring.trigger();
+        rollSpring.trigger();
+      }
+
+      // ---- 2) 物理：定步长子步推进 ----
+      // 【关键 · 平滑性】只推进「该帧落在触水之后」的那段时间。
+      // 若整帧都推进，跨过 T_TOUCH 的那一帧会把物理多推 (T_TOUCH − t0)，
+      // 船体位置会向前跳一小段 —— 这正是"入水过渡位置变化不平滑"的来源之一。
+      let rem = frameDt;
+      if (landed) rem = Math.max(0, t - Math.max(t0, T_TOUCH));
+      if (rem > 0) {
+        while (rem > 1e-5) {
+          const sub = Math.min(rem, 1 / 60);
+          buoy.update(sub);
+          pitchSpring.update(sub);
+          rollSpring.update(sub);
+          // 波面跟随：低通 + 强衰减。
+          // 【关键 · 平滑性】原先直接把 water.heightAt() 加到位置上是错的：
+          // ① 与浮力弹簧重复计数（弹簧已经在描述船对位移的响应）；
+          // ② 0.33–0.72 Hz 的波与 0.28 Hz 的弹簧振荡叠加会产生"拍频"，看起来就是不流畅。
+          // 物理上一条 86 m 长的艇根本不会跟着 3–14 m 的波起伏，波浪从它下面穿过。
+          const wNow = water.heightAt(0, 0, t);
+          waveSmooth += (wNow - waveSmooth) * (1 - Math.exp(-sub / WAVE_TAU));
+          splash.update(sub);
+          bubbles.update(sub, landed);
+          rem -= sub;
+        }
+      }
+
+      // ---- 3) 运动学量：全部按绝对时间取，与帧率无关 ----
+      let h = 0, rpm = 300, aftRev = false, deploy = 0, paddleRpm = 0;
+      let pitchDeg = 1.5, rollDeg = 0, elevator = -4;
+
+      if (t < T_HOVER) {
+        h = DROP;
+        rpm = 300 + Math.sin(t * 3.0) * 18;
+        pitchDeg = profileAt(PITCH_KEYS, t);
+        rollDeg = Math.sin(t * 0.85) * 0.35;
+        elevator = -4;
+      } else if (t < T_TOUCH) {
+        const s0 = t - T_HOVER;
+        const u = s0 / T_DESC;
+        h = DROP - (V0 * s0 - 0.5 * A_DEC * s0 * s0);
+        rpm = 300 - 210 * u;
+        aftRev = u > 0.72;
+        pitchDeg = profileAt(PITCH_KEYS, t);
+        // 末值收敛到 0.6° —— 与横滚弹簧的初值对齐，避免触水瞬间跳变
+        rollDeg = Math.sin(t * 1.7) * 0.5 * (1 - u) + 0.6 * u;
+        // 升降舵与俯仰联动；末值收敛到 ELEV_TOUCH，与触水后段对齐
+        elevator = -6 - pitchDeg * 0.8 + Math.sin(t * 2.6) * 1.2;
+      } else {
+        // 已触水：吃水由浮力弹簧给，波面跟随已低通并强衰减
+        h = -(buoy.y - buoy.draft) + waveSmooth * WAVE_FOLLOW;
+        rpm = 90 - 50 * Math.min(1, (t - T_TOUCH) / 2.5);
+        pitchDeg = pitchSpring.value;      // 弹簧在子步里已推进，这里只取值
+        rollDeg = rollSpring.value;
+        elevator = ELEV_TOUCH + (4 - ELEV_TOUCH) * Math.min(1, (t - T_TOUCH) / 3.0);
+        deploy = smoothstep((t - (T_TOUCH + 0.4)) / 2.2);
+        paddleRpm = deploy > 0.98 ? 16 : 0;
+        // ★ 只要还在继续下沉就持续补喷 —— 水花被"落水过程"激起，不是播固定动画
+        splash.pulse(Math.min(1, Math.max(0, buoy.v) / Math.max(0.05, V1)));
+      }
+      st.deploy = deploy;
+      st.sailStow = sailOverride ?? sailStowAt(t);
+
+      // ---- 3.5) 位姿平滑：把所有内部微跳变（冲击脉冲、相位切换）抹成 C1 连续 ----
+      // 一阶指数滤波，用真实 dt 计算系数 ⇒ 帧率无关
+      if (!st.sm.init) { st.sm.h = h; st.sm.pitch = pitchDeg; st.sm.roll = rollDeg; st.sm.init = true; }
+      const k = frameDt > 1e-6 ? 1 - Math.exp(-frameDt / POSE_TAU) : 0;
+      st.sm.h += (h - st.sm.h) * k;
+      st.sm.pitch += (pitchDeg - st.sm.pitch) * k;
+      st.sm.roll += (rollDeg - st.sm.roll) * k;
+
+      // ---- 4) 平滑性自检：记录竖直位置与速度，便于客观核验过渡是否连续 ----
+      st.h = st.sm.h;
+      st.hVel = frameDt > 1e-6 ? (st.sm.h - st.hPrev) / frameDt : st.hVel;
+      st.hPrev = st.sm.h;
+
+      asset.userData.parts.drive(t, {
+        altitude: FLOAT_Y + st.sm.h,
+        pitch: st.sm.pitch,
+        roll: st.sm.roll,
+        propRpm: rpm,
+        propAftReverse: aftRev,
+        elevator,
+        rudder: rudderAt(t),
+        paddleDeploy: paddleOverride ?? deploy,
+        paddleRpm: (paddleOverride ?? deploy) > 0.98 ? Math.max(6, paddleRpm) : 0,
+        sailStow: sailOverride ?? sailStowAt(t),
+        auxRpm: Math.max(24, rpm * 0.5),
+      });
+    },
+  },
+});
+
+window.__viewer = viewer;
+
+/**
+ * 平滑性核验工具（可溯源证据）
+ * 以固定步长**从干净状态重跑**时间轴，返回竖直高度/高度速度的完整采样，
+ * 便于客观检查入水过渡是否连续（而不是靠肉眼说"感觉不流畅"）。
+ * 用法：__trace(5.6, 7.2, 0.008) → 看 maxFrameJump_m / maxAccel_mps2
+ * 注意：必须先复位所有积分状态，否则测的是"续着上一段在跑"的曲线，不可复现。
+ */
+window.__trace = function (tA, tB, step = 0.008) {
+  const anim = viewer.__anim;
+  const a = viewer.asset;
+  // --- 复位到干净初始状态（保证可复现）---
+  st.landed = false; st.deploy = 0; st.hPrev = 0; st.hVel = 0; st.h = 0;
+  st.sm.init = false;
+  buoy.reset(); waveSmooth = 0;
+  pitchSpring.reset(); rollSpring.reset();
+  splash.reset();
+  bubbles.update(0, false);
+  a.userData.parts.setPaddleDeploy(paddleOverride ?? 0);
+
+  const out = [];
+  prevT = tA - step;
+  for (let t = tA; t <= tB + 1e-9; t += step) {
+    anim.tick(t, { stage: viewer.stage, asset: a });
+    out.push([+t.toFixed(4), +a.position.y.toFixed(5), +st.hVel.toFixed(4)]);
+  }
+  let maxAcc = 0, maxAccT = 0, maxJump = 0, maxJumpT = 0, maxJerk = 0, maxJerkT = 0;
+  const WARM = 4;   // 跳过前几个采样：tA 之前没有历史，首帧差分是假值
+  for (let i = WARM; i < out.length; i++) {
+    const dv = Math.abs(out[i][2] - out[i - 1][2]) / step;
+    if (dv > maxAcc) { maxAcc = dv; maxAccT = out[i][0]; }
+    const dy = Math.abs(out[i][1] - out[i - 1][1]);
+    if (dy > maxJump) { maxJump = dy; maxJumpT = out[i][0]; }
+    if (i > WARM) {
+      const da = Math.abs((out[i][2] - out[i - 1][2]) - (out[i - 1][2] - out[i - 2][2])) / (step * step);
+      if (da > maxJerk) { maxJerk = da; maxJerkT = out[i][0]; }
+    }
+  }
+  return {
+    step, n: out.length,
+    maxFrameJump_m: +maxJump.toFixed(5), maxFrameJump_at: maxJumpT,
+    maxAccel_mps2: +maxAcc.toFixed(3), maxAccel_at: maxAccT,
+    maxJerk_mps3: +maxJerk.toFixed(1), maxJerk_at: maxJerkT,
+    atTouch: out.filter((r) => Math.abs(r[0] - T_TOUCH) < step * 2.5),
+    samples: out.map((r) => r.join(',')).join('\n'),
+  };
+};
+
+// ---------------------------------------------------------------------------
+// 桨轮检查滑杆
+// ---------------------------------------------------------------------------
+(function paddlePanel() {
+  const el = document.createElement('div');
+  el.id = 'paddle';
+  el.innerHTML = `
+    <h3>机构检查</h3>
+    <div class="r">
+      <span class="lb">桨轮</span>
+      <input type="range" id="pd" min="0" max="1" step="0.01" value="0">
+      <span class="st" id="pdt">收折 0%</span>
+    </div>
+    <div class="r">
+      <span class="lb">桅帆</span>
+      <input type="range" id="sm2" min="0" max="1" step="0.01" value="0">
+      <span class="st" id="smt">满帆 0%</span>
+    </div>
+    <div class="btns">
+      <button data-v="0" data-k="pd">桨轮收折</button>
+      <button data-v="1" data-k="pd">桨轮入水</button>
+      <button data-v="auto" data-k="pd">桨轮随轴</button>
+    </div>
+    <div class="btns">
+      <button data-v="0" data-k="sm2">满帆张开</button>
+      <button data-v="0.5" data-k="sm2">收帆中</button>
+      <button data-v="1" data-k="sm2">折桅贴舷</button>
+      <button data-v="auto" data-k="sm2">桅帆随轴</button>
+    </div>`;
+  document.body.appendChild(el);
+
+  const rng = el.querySelector('#pd');
+  const lab = el.querySelector('#pdt');
+  const srng = el.querySelector('#sm2');
+  const slab = el.querySelector('#smt');
+  const legs = () => viewer.asset?.userData?.parts;
+  const applyPaddle = (v) => {
+    paddleOverride = v;
+    const u = v === null ? st.deploy : v;
+    rng.value = u;
+    lab.textContent = v === null ? `轴 ${(u * 100).toFixed(0)}%`
+      : (u < 0.02 ? '收折 0%' : u > 0.98 ? '入水 100%' : `展开 ${(u * 100).toFixed(0)}%`);
+    legs()?.setPaddleDeploy(u);          // 暂停状态下也能即时看到机构姿态
+  };
+  const applySail = (v) => {
+    sailOverride = v;
+    const u = v === null ? (st.sailStow ?? 0) : v;
+    srng.value = u;
+    slab.textContent = v === null ? `轴 ${(u * 100).toFixed(0)}%`
+      : (u < 0.02 ? '满帆 0%' : u > 0.98 ? '折桅 100%' : `收起 ${(u * 100).toFixed(0)}%`);
+    legs()?.setSailStow(u);
+  };
+  rng.oninput = () => applyPaddle(parseFloat(rng.value));
+  srng.oninput = () => applySail(parseFloat(srng.value));
+  el.querySelectorAll('button').forEach((b) => {
+    const v = b.dataset.v === 'auto' ? null : parseFloat(b.dataset.v);
+    b.onclick = () => (b.dataset.k === 'pd' ? applyPaddle(v) : applySail(v));
+  });
+  applyPaddle(null);
+  applySail(null);
+  setInterval(() => {
+    if (paddleOverride === null) {
+      rng.value = st.deploy;
+      lab.textContent = `轴 ${(st.deploy * 100).toFixed(0)}%`;
+    }
+    if (sailOverride === null) {
+      const u = st.sailStow ?? 0;
+      srng.value = u;
+      slab.textContent = `轴 ${(u * 100).toFixed(0)}%`;
+    }
+  }, 250);
+})();
+
+document.getElementById('boot').classList.add('gone');
+setTimeout(() => document.getElementById('boot')?.remove(), 600);
+
+// ---------------------------------------------------------------------------
+// 20 m 比例尺
+// ---------------------------------------------------------------------------
+function buildScaleBar(len, pos) {
+  const g = new THREE.Group();
+  g.name = 'ScaleBar_20m';
+  const mat = M.brass({ bands: [0.35, 0.7, 1.0] });
+  const bar = new THREE.Mesh(new THREE.BoxGeometry(len, 0.22, 0.5), mat);
+  bar.position.y = 0.11;
+  g.add(bar);
+  for (let i = 0; i <= 4; i++) {
+    const x = -len / 2 + (len * i) / 4;
+    const long = i % 2 === 0;
+    const tick = new THREE.Mesh(new THREE.BoxGeometry(0.22, long ? 1.6 : 0.9, 0.5), mat);
+    tick.position.set(x, long ? 0.8 : 0.45, 0);
+    g.add(tick);
+  }
+  g.position.fromArray(pos);
+  g.userData.noMerge = true;
+  return g;
+}
+</script>
+</body>
+</html>
