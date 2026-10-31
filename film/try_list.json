@@ -1,0 +1,8 @@
+[
+  {"id":"K1","t":24,"tod":"noon","rain":true,"pos":[-28,6.5,2.0],"tgt":[-12,4.5,0],"fov":54,"focus":20,"aperture":0.5,
+   "grade":{"exposure":1.0,"contrast":1.06,"sat":1.06}},
+  {"id":"K2","t":24,"tod":"noon","rain":true,"pos":[-28,6.5,2.0],"tgt":[-12,4.5,0],"fov":54,"focus":20,"aperture":0.5,
+   "grade":{"exposure":0.88,"contrast":1.12,"sat":1.04,"bloom":0.18}},
+  {"id":"K3","t":24,"tod":"noon","rain":true,"pos":[-28,6.5,2.0],"tgt":[-12,4.5,0],"fov":54,"focus":20,"aperture":0.5,
+   "grade":{"exposure":0.82,"contrast":1.16,"sat":1.02,"bloom":0.15,"gain":[0.97,1.0,1.06]}}
+]

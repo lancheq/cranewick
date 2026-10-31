@@ -65,13 +65,46 @@ src/assets/                 airship · bridge · street · canal · vehicles · 
 src/scene/assemble.js       全场景合成 + 64 s 时间线
 tools/                      verify · stamp · checkhtml · contracts · materials · devserver
 tools/blender/              Blender 建模 / 导出的管线脚本
+film/                       分镜表 · 导演层 · 相机轨道生成 · 渲染入口
 vendor/                     three.js r186（本地化）
 renders/presets/            四时段锁定光照参数
 renders/textures/           水面法线等贴图输入
 docs/                       STYLE_PROMPT · ART_BIBLE · DECISIONS · SHOT_SCRIPT
 ```
 
-> 成片与渲染样张体积较大，未包含在本仓库。
+> 成片、渲染样张与分镜图体积较大，未包含在本仓库。
+
+---
+
+## 光照
+
+分两条管线，互不影响：
+
+| 层 | 位置 | 内容 |
+|---|---|---|
+| 网页实时 | `src/core/stage.js` | 场景环境光、方向光、雾与色调映射 |
+| Blender 渲染 | `renders/presets/cranewick_{morning,noon,dusk,night}_locked.json` | 四时段锁定参数：Cycles 96 samples、AgX Medium High Contrast、曝光、太阳高度/方位、天空强度与尘埃 |
+| Blender 打灯代码 | `tools/blender/build_cranewick.py` | 相机（42 mm、f/5.0 景深）与各类灯的具体摆位 |
+
+---
+
+## 成片管线（运镜）
+
+那支渲染动画不是手工 K 帧，而是分镜表驱动、在网页场景里逐帧渲染出来的：
+
+```bash
+node film/render.mjs --w 1920 --h 1080 --ss 1 --out film/out/previs.mp4
+```
+
+| 文件 | 作用 |
+|---|---|
+| `film/shotlist.mjs` | 分镜表：每镜时码、时段（morning/noon/dusk/night）、雨、转场、机位约束 |
+| `film/director.mjs` | 导演层：无头 Chromium 打开 `canal_airship.html`，运行时注入相机样条与电影级后处理并逐帧驱动，不修改场景文件 |
+| `film/gen_track_v14.py` | 相机轨迹生成（Catmull-Rom 样条），输出可烘焙的关键帧 JSON |
+| `film/try_list.json` | 机位 / 焦段 / 景深 / 调色（曝光、对比、饱和、bloom）候选表 |
+| `film/render.mjs` · `shotlist.mjs` · `stills.mjs` · `shot_preview.mjs` | 渲染入口与预演 / 抽帧工具 |
+
+> 运行需要 `playwright-core` 与对应 Chromium（`npm i playwright-core` 后 `npx playwright install chromium`）。
 
 ---
 

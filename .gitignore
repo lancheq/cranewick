@@ -18,7 +18,11 @@ _scratch/
 renders/*
 !renders/presets/
 !renders/textures/
-film/
+# 成片管线：只保留脚本与分镜数据，排除成片与分镜图
+film/*
+!film/*.mjs
+!film/*.py
+!film/*.json
 refs/
 
 # Blender 工具：只保留管线本体，排除一次性探针脚本
