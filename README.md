@@ -10,6 +10,7 @@
 
 > **风格准绳**：[`docs/STYLE_PROMPT.md`](./docs/STYLE_PROMPT.md)（硬约束 S1–S10 · §7 已否决清单）
 > **美术全书**：[`docs/ART_BIBLE.md`](./docs/ART_BIBLE.md) · **锁定决策**：[`docs/DECISIONS.md`](./docs/DECISIONS.md)
+> **场景规格底稿**：[`PROMPT_运河飞艇降落.md`](./PROMPT_运河飞艇降落.md)（完整提示词 · v2→v17 修订史 · 24 分验收表）
 
 ---
 
@@ -56,6 +57,7 @@ python3 tools/devserver.py 8817
 ```
 canal_airship.html          单文件成品（离线可跑）
 canal_airship_fix.html      渲染管线模型源
+PROMPT_运河飞艇降落.md       场景规格底稿（提示词 + 修订史 + 验收表）
 index.html                  全场景（时间线 64 s）
 preview/                    ①–⑥ 单资产预览页
 studio/index.html           运镜录制台
